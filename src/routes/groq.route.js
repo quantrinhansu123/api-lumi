@@ -1,8 +1,6 @@
 import express from "express";
 import { getGroqChatCompletion } from "../services/groq.services.js";
+import { goodMorningController } from "../controller/groq.controller.js";
 const router = express.Router();
-router.get('/', async (req, res) => {
-  const a = await getGroqChatCompletion();
-  res.status(200).json({ message: a });
-});
+router.get('/', goodMorningController);
 export default router;
