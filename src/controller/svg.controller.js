@@ -21,3 +21,29 @@ export const progressCircle = async (req, res) => {
     res.setHeader('Content-Type', 'image/svg+xml');
     res.send(svg);
 }
+
+export const progressBar = async (req, res) => {
+    const percent = Math.max(0, Math.min(100, parseInt(req.query.percent, 10) || 0)); // Giới hạn từ 0 - 100
+    const width = parseInt(req.query.width, 10) || 200;
+    const height = parseInt(req.query.height, 10) || 20;
+    const bgColor = req.query.bgColor ? decodeURIComponent(req.query.bgColor) : "#ddd";
+    const progressColor = req.query.progressColor ? decodeURIComponent(req.query.progressColor) : "#BC2967";
+
+    // Tính chiều rộng thanh progress
+    const barWidth = (percent / 100) * width;
+
+    // Tạo SVG
+    const svg = `
+        <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+            <rect width="${width}" height="${height}" fill="${bgColor}" rx="5" />
+            <rect width="${barWidth}" height="${height}" fill="${progressColor}" rx="5" />
+            <text x="${width / 2}" y="${height / 2}" text-anchor="middle" font-size="12" fill="#fff" dominant-baseline="middle">
+                ${percent}%
+            </text>
+        </svg>
+    `;
+
+    // Gửi phản hồi dưới dạng SVG
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.send(svg);
+};

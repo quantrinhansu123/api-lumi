@@ -20,3 +20,22 @@ export const progressCircle = async (percent) => {
     `;
     return svg
 }
+
+export const progressBar = async (percent, width = 200, height = 20) => {
+    percent = parseInt(percent, 10) || 0;
+    percent = Math.max(0, Math.min(100, percent));
+
+    const barWidth = width * (percent / 100);
+    const bgColor = '#ddd';
+    const progressColor = '#BC2967';
+
+    const svg = 
+        <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+            <rect width="${width}" height="${height}" fill="${bgColor}" />
+            <rect width="${barWidth}" height="${height}" fill="${progressColor}" />
+            <text x="${width / 2}" y="${height / 2 + 5}" text-anchor="middle" font-size="12" fill="#fff">${percent}%</text>
+        </svg>
+    ;
+
+    return svg;
+};
