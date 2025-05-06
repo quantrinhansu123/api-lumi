@@ -23,8 +23,9 @@ export const getQR = async (req, res) => {
                 "Content-Type": `application/json`,
             }
         })
+        
 
-        if (acc?.data?.status !== 'OK') {
+        if (acc?.data[0]["QR Thanh toán"] != '') {
 
             const data = await axios.post(`https://core.devops.sieutho.vn/external/deposit`,
                 {
