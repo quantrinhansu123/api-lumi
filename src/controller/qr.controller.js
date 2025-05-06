@@ -19,9 +19,6 @@ export const getQR = async (req, res) => {
             }
         }
         )
-        if (!text) {
-            return res.status(400).send('Thiếu tham số "text"');
-        }
 
         const svg = await generateQR(data?.data?.data);
 
