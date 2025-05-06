@@ -5,48 +5,72 @@ export const getQR = async (req, res) => {
     try {
         const { orderId, amount } = req.query;
 
-        const data = await axios.post(`https://core.devops.sieutho.vn/external/deposit`,
-            {
-
-                "OrderId": orderId,
-
-                "Amount": amount
-
-            }, {
+        const acc = await axios.post(`https://www.appsheet.com/api/v2/apps/18f892a1-82e5-4731-a85a-8cad999d11f2/tables/Đơn mua booking/Action`, {
+            "Action": "Find",
+            "Properties": {
+                "Usersettings": {
+                    "info": "Admin"
+                }
+            },
+            "Rows": [
+                {
+                    "Id": orderId,
+                }
+            ]
+        }, {
             headers: {
-                "api-key": process.env.QR_KEY,
+                "ApplicationAccessKey": `${process.env.APPSHEET_KEY}`,
                 "Content-Type": `application/json`,
             }
-        }
-        )
+        })
 
+        if (acc?.data?.status !== 'OK') {
 
-        const svg = await generateQR(data?.data?.data);
+            const data = await axios.post(`https://core.devops.sieutho.vn/external/deposit`,
+                {
 
-        res.setHeader('Content-Type', 'image/svg+xml');
-        res.send(svg);
+                    "OrderId": orderId,
 
-        setTimeout(async () => {
-            await axios.post(`https://www.appsheet.com/api/v2/apps/18f892a1-82e5-4731-a85a-8cad999d11f2/tables/Đơn mua booking/Action`, {
-                "Action": "Edit",
-                "Properties": {
-                    "Usersettings": {
-                        "info": "Admin"
-                    }
-                },
-                "Rows": [
-                    {
-                        "Id": orderId,
-                        "qrText": `https://n-api-rouge.vercel.app/qr/text?text=${data?.data?.data}`,
-                    }
-                ]
-            }, {
+                    "Amount": amount
+
+                }, {
                 headers: {
-                    "ApplicationAccessKey": `${process.env.APPSHEET_KEY}`,
+                    "api-key": process.env.QR_KEY,
                     "Content-Type": `application/json`,
                 }
-            })
-        }, 3000);
+            }
+            )
+
+
+            const svg = await generateQR(data?.data?.data);
+
+            res.setHeader('Content-Type', 'image/svg+xml');
+            res.send(svg);
+
+            setTimeout(async () => {
+                await axios.post(`https://www.appsheet.com/api/v2/apps/18f892a1-82e5-4731-a85a-8cad999d11f2/tables/Đơn mua booking/Action`, {
+                    "Action": "Edit",
+                    "Properties": {
+                        "Usersettings": {
+                            "info": "Admin"
+                        }
+                    },
+                    "Rows": [
+                        {
+                            "Id": orderId,
+                            "qrText": `https://n-api-rouge.vercel.app/qr/text?text=${data?.data?.data}`,
+                        }
+                    ]
+                }, {
+                    headers: {
+                        "ApplicationAccessKey": `${process.env.APPSHEET_KEY}`,
+                        "Content-Type": `application/json`,
+                    }
+                })
+            }, 6000);
+        } else {
+            return
+        }
     } catch (err) {
         console.error(err);
         res.status(500).send('Lỗi tạo QR');
