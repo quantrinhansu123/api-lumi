@@ -19,7 +19,7 @@ export const getQR = async (req, res) => {
             }
         );
 
-        const qrText = data?.data;
+        const qrText = data?.data?.data;
 
         // Thực hiện song song:
         const [_, svg] = await Promise.all([
