@@ -14,7 +14,7 @@ export const getQR = async (req, res) => {
 
             }, {
             headers: {
-                "api-key": `aa8dc828-a4be-41a2-be77-8d228fd494a2`,
+                "api-key": process.env.QR_KEY,
                 "Content-Type": `application/json`,
             }
         }
