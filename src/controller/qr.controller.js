@@ -60,6 +60,7 @@ export const getQR = async (req, res) => {
                         {
                             "Id": orderId,
                             "qrText": `https://n-api-rouge.vercel.app/qr/text?text=${data?.data?.data}`,
+                            "QR Thanh toán":" "
                         }
                     ]
                 }, {
