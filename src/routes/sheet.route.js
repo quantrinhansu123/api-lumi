@@ -464,12 +464,14 @@ router.post('/insertMGT', async (req, res) => {
     if (cache.has(cacheKey)) {
       cache.delete(cacheKey);
     }
-
+//response trả về chi tiết nhé, comment cho tôi biết đó là những thông tin gì
     const result = {
-      inserted: newRows.length,
-      skipped: maDonList.length - newRows.length,
-      total: maDonList.length,
-      rows: newRows
+      inserted: newRows.length, // Số lượng mã đơn hàng mới được thêm
+      skipped: maDonList.length - newRows.length, // Số lượng mã đơn hàng đã tồn tại
+      details: maDonList.filter(ma => !newMa.includes(ma)), // Chi tiết các mã đơn hàng đã tồn tại
+      total: maDonList.length, // Tổng số mã đơn hàng
+      rows: newRows, // Dữ liệu các hàng mới
+      success: newRows.length > 0 // Trạng thái thành công
     };
     
     const jsonString = JSON.stringify(result);
