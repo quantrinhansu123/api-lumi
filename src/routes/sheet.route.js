@@ -468,7 +468,8 @@ router.post('/insertMGT', async (req, res) => {
     const result = {
       inserted: newRows.length,
       skipped: maDonList.length - newRows.length,
-      total: maDonList.length
+      total: maDonList.length,
+      rows: newRows
     };
     
     const jsonString = JSON.stringify(result);
