@@ -471,7 +471,7 @@ router.post('/insertMGT', async (req, res) => {
       details: maDonList.filter(ma => !newMa.includes(ma)), // Chi tiết các mã đơn hàng đã tồn tại
       total: maDonList.length, // Tổng số mã đơn hàng
       rows: newRows, // Dữ liệu các hàng mới
-      success: newRows.length > 0 // Trạng thái thành công
+      success: true
     };
     
     const jsonString = JSON.stringify(result);
