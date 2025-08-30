@@ -183,26 +183,6 @@ router.get('/getSheets', async (req, res) => {
   const callbackName = req.query.callback;
   const {sheetName, rangeSheet, spreadsheetId} = req.query;
 
-  // Tạo cache key cho sheet này
-  const cacheKey = `${sheetName}_${rangeSheet}`;
-  
-  // Kiểm tra cache trước
-  const now = Date.now();
-  const cached = cache.get(cacheKey);
-  if (cached && (now - cached.timestamp) < CACHE_DURATION) {
-    console.log('Cache hit - returning cached data for:', cacheKey);
-    const jsonString = JSON.stringify(cached.data);
-    
-    if (callbackName) {
-      res.set('Content-Type', 'application/javascript');
-      res.send(`${callbackName}(${jsonString});`);
-    } else {
-      res.set('Content-Type', 'application/json');
-      res.send(jsonString);
-    }
-    return;
-  }
-
   let result = {}; // Khởi tạo đối tượng result để chứa kết quả cuối cùng
 
   try {
@@ -218,9 +198,8 @@ router.get('/getSheets', async (req, res) => {
 
     const values = response.data.values;
 
-
     if (!values || values.length < 2) {
-      result = { headers: [], rows: [], error: 'Không tìm thấy dữ liệu hoặc dữ liệu không đủ trong Google Sheet F3.' };
+      result = { headers: [], rows: [], error: `Không tìm thấy dữ liệu hoặc dữ liệu không đủ trong Google Sheet ${sheetName}.` };
     } else {
       const headers = values[0];
       let dataRows = values.slice(1);
@@ -232,15 +211,6 @@ router.get('/getSheets', async (req, res) => {
         return obj;
       });
       result = { headers: headers, rows: data };
-    }
-
-    // Lưu vào cache nếu thành công
-    if (!result.error) {
-      cache.set(cacheKey, {
-        data: result,
-        timestamp: now
-      });
-      console.log('Data cached successfully for:', cacheKey);
     }
 
   } catch (error) {
