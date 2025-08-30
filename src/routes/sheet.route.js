@@ -386,6 +386,109 @@ router.post('/updateSheets', async (req, res) => {
   }
 });
 
+// Thêm route POST để insert mã đơn hàng vào sheet MGT nội bộ
+router.post('/insertMGT', async (req, res) => {
+  const callbackName = req.query.callback;
+  const SHEET_NAME = "test mgt nội bộ"; // tên sheet bạn đang dùng
+  const COL_INDEX = 1; // chỉ có 1 cột duy nhất (A = 1)
+  
+  try {
+    const sheets = await getAuthenticatedClient();
+    
+    // Parse data từ form-encoded hoặc JSON
+    let payload;
+    if (typeof req.body.data === 'string') {
+      payload = { data: JSON.parse(req.body.data) }; // Từ URLSearchParams
+    } else if (req.body.data) {
+      payload = { data: req.body.data }; // Từ JSON body với key 'data'
+    } else {
+      payload = req.body; // Toàn bộ body là payload
+    }
+    
+    const maDonList = payload.data;
+
+    if (!Array.isArray(maDonList)) {
+      const result = { error: "Dữ liệu đầu vào không hợp lệ" };
+      const jsonString = JSON.stringify(result);
+      
+      res.status(400);
+      if (callbackName) {
+        res.set('Content-Type', 'application/javascript');
+        res.send(`${callbackName}(${jsonString});`);
+      } else {
+        res.set('Content-Type', 'application/json');
+        res.send(jsonString);
+      }
+      return;
+    }
+
+    // Lấy danh sách mã hiện có
+    const existingResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${SHEET_NAME}!A:A`, // Cột A
+    });
+    
+    const existingValues = existingResponse.data.values || [];
+    const existing = existingValues.flat(); // Flatten array
+    const existingSet = new Set(existing);
+
+    // Lọc mã chưa có
+    const newMa = maDonList.filter(ma => !existingSet.has(ma));
+    const newRows = newMa.map(ma => [ma]); // chuyển thành mảng 2D
+
+    // Ghi vào sheet nếu có dữ liệu mới
+    if (newRows.length > 0) {
+      const lastRow = existingValues.length;
+      const startRow = lastRow + 1;
+      
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${SHEET_NAME}!A${startRow}:A${startRow + newRows.length - 1}`,
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: newRows
+        }
+      });
+    }
+
+    // Clear cache cho sheet này nếu có
+    const cacheKey = `${SHEET_NAME}_A:A`;
+    if (cache.has(cacheKey)) {
+      cache.delete(cacheKey);
+    }
+
+    const result = {
+      inserted: newRows.length,
+      skipped: maDonList.length - newRows.length,
+      total: maDonList.length
+    };
+    
+    const jsonString = JSON.stringify(result);
+
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+    
+  } catch (err) {
+    console.error('Error inserting to MGT sheet:', err);
+    const result = { error: err.message };
+    const jsonString = JSON.stringify(result);
+    
+    res.status(500);
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+  }
+});
+
 // Route để xóa cache
 router.get('/clearCache', (req, res) => {
   const {cacheKey} = req.query;
