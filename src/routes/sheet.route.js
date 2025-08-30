@@ -18,9 +18,7 @@ const SPREADSHEET_ID = '1rI9cHBNlI2Dc-d6VF6zdKiUagBh-VPFrWdddPysuSmo';
 
 // Cache configuration
 const CACHE_DURATION = 5 * 60 * 1000; // 5 phút
-const MAX_ROWS = 10000; // Giới hạn số rows để tránh memory issues
-let cachedData = null;
-let lastFetch = 0;
+const cache = new Map(); // Cache riêng cho từng sheet
 
 // Connection pooling - tạo auth client một lần và tái sử dụng
 let authClient = null;
@@ -64,11 +62,15 @@ router.get('/getAll', async (req, res) => {
   // Lấy giá trị callback từ query parameters
   const callbackName = req.query.callback;
 
+  // Tạo cache key cho sheet này
+  const cacheKey = 'test_f3_all';
+  
   // Kiểm tra cache trước
   const now = Date.now();
-  if (cachedData && (now - lastFetch) < CACHE_DURATION) {
-    console.log('Cache hit - returning cached data');
-    const jsonString = JSON.stringify(cachedData);
+  const cached = cache.get(cacheKey);
+  if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+    console.log('Cache hit - returning cached data for:', cacheKey);
+    const jsonString = JSON.stringify(cached.data);
     
     if (callbackName) {
       res.set('Content-Type', 'application/javascript');
@@ -101,7 +103,7 @@ router.get('/getAll', async (req, res) => {
     } else {
       const headers = values[0];
       // Giới hạn số lượng rows để tránh memory issues
-      let dataRows = values.slice(1, MAX_ROWS + 1);
+      let dataRows = values.slice(1);
 
       // --- Xác định cột để sắp xếp
       const SORT_COL = "Ngày Kế toán đối soát với FFM lần 2";
@@ -149,9 +151,11 @@ router.get('/getAll', async (req, res) => {
 
     // Lưu vào cache nếu thành công
     if (!result.error) {
-      cachedData = result;
-      lastFetch = now;
-      console.log('Data cached successfully');
+      cache.set(cacheKey, {
+        data: result,
+        timestamp: now
+      });
+      console.log('Data cached successfully for:', cacheKey);
     }
 
   } catch (error) {
@@ -177,13 +181,17 @@ router.get('/getAll', async (req, res) => {
 router.get('/getSheets', async (req, res) => {
   // Lấy giá trị callback từ query parameters
   const callbackName = req.query.callback;
-  const {sheetName, range} = req.query;
+  const {sheetName, rangeSheet} = req.query;
 
+  // Tạo cache key cho sheet này
+  const cacheKey = `${sheetName}_${rangeSheet}`;
+  
   // Kiểm tra cache trước
   const now = Date.now();
-  if (cachedData && (now - lastFetch) < CACHE_DURATION) {
-    console.log('Cache hit - returning cached data');
-    const jsonString = JSON.stringify(cachedData);
+  const cached = cache.get(cacheKey);
+  if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+    console.log('Cache hit - returning cached data for:', cacheKey);
+    const jsonString = JSON.stringify(cached.data);
     
     if (callbackName) {
       res.set('Content-Type', 'application/javascript');
@@ -201,7 +209,7 @@ router.get('/getSheets', async (req, res) => {
     // Sử dụng authenticated client đã được cache
     const sheets = await getAuthenticatedClient();
 
-    const range = `${sheetName}!${range}`;
+    const range = `${sheetName}!${rangeSheet}`;
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: range,
@@ -214,58 +222,17 @@ router.get('/getSheets', async (req, res) => {
       result = { headers: [], rows: [], error: 'Không tìm thấy dữ liệu hoặc dữ liệu không đủ trong Google Sheet F3.' };
     } else {
       const headers = values[0];
-      // Giới hạn số lượng rows để tránh memory issues
-      let dataRows = values.slice(1, MAX_ROWS + 1);
-
-      // --- Xác định cột để sắp xếp
-      const SORT_COL = "Ngày Kế toán đối soát với FFM lần 2";
-      const sortIdx = headers.indexOf(SORT_COL);
-
-      // --- Tối ưu sorting function
-      if (sortIdx !== -1) {
-        dataRows.sort((a, b) => {
-          const valA = a[sortIdx];
-          const valB = b[sortIdx];
-          
-          if (!valA) return 1;
-          if (!valB) return -1;
-          
-          const timeA = new Date(valA).getTime();
-          const timeB = new Date(valB).getTime();
-          
-          if (isNaN(timeA)) return 1;
-          if (isNaN(timeB)) return -1;
-          
-          return timeB - timeA;
-        });
-      }
-
-      // --- Tối ưu mapping với for loop thay vì forEach
-      const resultRows = dataRows.map((row) => {
-        const obj = {};
-        for (let ci = 0; ci < row.length && ci < headers.length; ci++) {
-          const header = headers[ci];
-          let value = row[ci];
-
-          if (header !== SORT_COL && value && isDateString(value)) {
-            const parsedDate = new Date(value);
-            if (!isNaN(parsedDate.getTime())) {
-              value = formatDateToMMddyyyy(parsedDate);
-            }
-          }
-          obj[header] = value;
-        }
-        return obj;
-      });
-
-      result = { headers: headers, rows: resultRows };
+      let dataRows = values.slice(1);
+      result = { headers: headers, rows: dataRows };
     }
 
     // Lưu vào cache nếu thành công
     if (!result.error) {
-      cachedData = result;
-      lastFetch = now;
-      console.log('Data cached successfully');
+      cache.set(cacheKey, {
+        data: result,
+        timestamp: now
+      });
+      console.log('Data cached successfully for:', cacheKey);
     }
 
   } catch (error) {
@@ -286,6 +253,47 @@ router.get('/getSheets', async (req, res) => {
     res.set('Content-Type', 'application/json');
     res.send(jsonString);
   }
+});
+
+// Route để xóa cache
+router.delete('/clearCache', (req, res) => {
+  const {cacheKey} = req.query;
+  
+  if (cacheKey) {
+    // Xóa cache của key cụ thể
+    if (cache.has(cacheKey)) {
+      cache.delete(cacheKey);
+      res.json({ success: true, message: `Cache cleared for key: ${cacheKey}` });
+    } else {
+      res.json({ success: false, message: `Cache key not found: ${cacheKey}` });
+    }
+  } else {
+    // Xóa toàn bộ cache
+    cache.clear();
+    res.json({ success: true, message: 'All cache cleared' });
+  }
+});
+
+// Route để xem trạng thái cache
+router.get('/cacheStatus', (req, res) => {
+  const cacheInfo = [];
+  const now = Date.now();
+  
+  for (const [key, value] of cache.entries()) {
+    const timeLeft = Math.max(0, CACHE_DURATION - (now - value.timestamp));
+    cacheInfo.push({
+      key,
+      cached: timeLeft > 0,
+      timeLeft: Math.ceil(timeLeft / 1000), // seconds
+      dataSize: JSON.stringify(value.data).length
+    });
+  }
+  
+  res.json({
+    cacheCount: cache.size,
+    cacheDuration: CACHE_DURATION / 1000, // seconds
+    items: cacheInfo
+  });
 });
 
 
