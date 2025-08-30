@@ -327,7 +327,9 @@ router.post('/updateSheets', async (req, res) => {
         // Parse date columns
         dateCols.forEach(col => {
           if (obj[col]) {
-            obj[col] = formatDate(obj[col]);
+            const date = new Date(obj[col]);
+            //mm/dd/yyyy
+            obj[col] = date.toLocaleDateString('en-GB');
           }
         });
         
