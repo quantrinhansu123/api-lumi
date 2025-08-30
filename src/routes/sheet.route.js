@@ -35,7 +35,7 @@ const getAuthenticatedClient = async () => {
   if (!authClient) {
     const auth = new google.auth.GoogleAuth({
       keyFile: KEYFILEPATH,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'], // Bỏ .readonly để có quyền write
     });
     authClient = await auth.getClient();
     sheetsAPI = google.sheets({ version: 'v4', auth: authClient });
@@ -252,6 +252,129 @@ router.get('/getSheets', async (req, res) => {
     // Trả về JSON thông thường
     res.set('Content-Type', 'application/json');
     res.send(jsonString);
+  }
+});
+
+// Thêm hàm formatDate (từ code Apps Script của bạn)
+function formatDate(dateString) {
+  // Implement hàm formatDate của bạn ở đây
+  if (typeof dateString === 'string' && dateString.includes('/')) {
+    const [month, day, year] = dateString.split('/');
+    return new Date(year, month - 1, day);
+  }
+  return dateString;
+}
+
+// Thêm route POST để update Google Sheets
+router.post('/updateSheets', async (req, res) => {
+  const callbackName = req.query.callback;
+  
+  try {
+    const sheets = await getAuthenticatedClient();
+    const sheetName = 'test f3'; // Hoặc lấy từ req.body.sheetName
+    
+    // Lấy headers
+    const headerResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheetName}!1:1`,
+    });
+    const headers = headerResponse.data.values[0];
+    
+    // Lấy tất cả dữ liệu
+    const dataResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheetName}!A:DA`,
+    });
+    const data = dataResponse.data.values;
+    
+    // Parse data từ form-encoded hoặc JSON
+    let updates;
+    if (typeof req.body.rows === 'string') {
+      updates = JSON.parse(req.body.rows); // Từ URLSearchParams
+    } else {
+      updates = req.body.rows; // Từ JSON body
+    }
+    
+    // Xây map mã đơn hàng → chỉ số dòng
+    const idCol = headers.indexOf("Mã đơn hàng");
+    const rowMap = new Map();
+    
+    data.slice(1).forEach((row, i) => {
+      if (row[idCol]) {
+        rowMap.set(row[idCol], i + 2); // +2 vì index 0-based và bỏ header
+      }
+    });
+    
+    // Các cột ngày cần parse
+    const dateCols = ["Ngày lên đơn", "Ngày đóng hàng"];
+    
+    const batchUpdates = [];
+    
+    updates.forEach(obj => {
+      const rowIndex = rowMap.get(obj["Mã đơn hàng"]);
+      if (rowIndex) {
+        // Parse date columns
+        dateCols.forEach(col => {
+          if (obj[col]) {
+            obj[col] = formatDate(obj[col]);
+          }
+        });
+        
+        // Tạo mảng giá trị theo đúng thứ tự headers
+        const oldRow = data[rowIndex - 1];
+        const rowVals = headers.map((h, colIdx) => {
+          return obj[h] !== undefined ? obj[h] : (oldRow[colIdx] || '');
+        });
+        
+        batchUpdates.push({
+          range: `${sheetName}!A${rowIndex}:${String.fromCharCode(65 + headers.length - 1)}${rowIndex}`,
+          values: [rowVals]
+        });
+      }
+    });
+    
+    // Batch update
+    if (batchUpdates.length > 0) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: SPREADSHEET_ID,
+        requestBody: {
+          valueInputOption: 'RAW',
+          data: batchUpdates
+        }
+      });
+    }
+    
+    // Clear cache sau khi update
+    cache.clear();
+    
+    const result = { 
+      message: `Cập nhật thành công ${batchUpdates.length} dòng.`,
+      updatedRows: batchUpdates.length
+    };
+    
+    const jsonString = JSON.stringify(result);
+
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+    
+  } catch (err) {
+    console.error('Error updating Google Sheets:', err);
+    const result = { error: err.message };
+    const jsonString = JSON.stringify(result);
+    
+    res.status(500);
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
   }
 });
 
