@@ -273,6 +273,17 @@ function formatDate(dateString) {
   return dateString;
 }
 
+// Thêm hàm helper để convert số cột thành ký tự
+function numberToColumnLetter(num) {
+  let result = '';
+  while (num > 0) {
+    num--; // Adjust for 0-based indexing
+    result = String.fromCharCode(65 + (num % 26)) + result;
+    num = Math.floor(num / 26);
+  }
+  return result;
+}
+
 // Thêm route POST để update Google Sheets
 router.post('/updateSheets', async (req, res) => {
   const callbackName = req.query.callback;
@@ -299,12 +310,34 @@ router.post('/updateSheets', async (req, res) => {
     let updates;
     if (typeof req.body.rows === 'string') {
       updates = JSON.parse(req.body.rows); // Từ URLSearchParams
+    } else if (Array.isArray(req.body)) {
+      updates = req.body; // Nếu body trực tiếp là array
     } else {
-      updates = req.body.rows; // Từ JSON body
+      updates = req.body.rows; // Từ JSON body với key 'rows'
+    }
+    
+    // Validate updates
+    if (!Array.isArray(updates)) {
+      const result = { error: "Dữ liệu updates phải là một mảng" };
+      const jsonString = JSON.stringify(result);
+      
+      res.status(400);
+      if (callbackName) {
+        res.set('Content-Type', 'application/javascript');
+        res.send(`${callbackName}(${jsonString});`);
+      } else {
+        res.set('Content-Type', 'application/json');
+        res.send(jsonString);
+      }
+      return;
     }
     
     // Xây map mã đơn hàng → chỉ số dòng
     const idCol = headers.indexOf("Mã đơn hàng");
+    if (idCol === -1) {
+      throw new Error('Không tìm thấy cột "Mã đơn hàng" trong sheet');
+    }
+    
     const rowMap = new Map();
     
     data.slice(1).forEach((row, i) => {
@@ -334,8 +367,11 @@ router.post('/updateSheets', async (req, res) => {
           return obj[h] !== undefined ? obj[h] : (oldRow[colIdx] || '');
         });
         
+        // Sử dụng hàm helper để tính toán range đúng
+        const endColumn = numberToColumnLetter(headers.length);
+        
         batchUpdates.push({
-          range: `${sheetName}!A${rowIndex}:${String.fromCharCode(65 + headers.length - 1)}${rowIndex}`,
+          range: `${sheetName}!A${rowIndex}:${endColumn}${rowIndex}`,
           values: [rowVals]
         });
       }
@@ -357,7 +393,9 @@ router.post('/updateSheets', async (req, res) => {
     
     const result = { 
       message: `Cập nhật thành công ${batchUpdates.length} dòng.`,
-      updatedRows: batchUpdates.length
+      updatedRows: batchUpdates.length,
+      totalRequested: updates.length,
+      foundRows: batchUpdates.length
     };
     
     const jsonString = JSON.stringify(result);
