@@ -329,7 +329,7 @@ router.post('/updateSheets', async (req, res) => {
           if (obj[col]) {
             const date = new Date(obj[col]);
             //mm/dd/yyyy
-            obj[col] = date.toLocaleDateString('en-GB');
+            obj[col] = date.toLocaleDateString('en-US');
           }
         });
         
