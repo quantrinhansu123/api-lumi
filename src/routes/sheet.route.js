@@ -86,8 +86,8 @@ router.get('/getAll', async (req, res) => {
     // Sử dụng authenticated client đã được cache
     const sheets = await getAuthenticatedClient();
 
-    // 2. Lấy dữ liệu từ Sheet "F3"
-    const range = 'F3!A:DA';
+    // 2. Lấy dữ liệu từ Sheet "test f3"
+    const range = 'test f3!A:DA';
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: range,
@@ -173,5 +173,120 @@ router.get('/getAll', async (req, res) => {
     res.send(jsonString);
   }
 });
+
+router.get('/getSheets', async (req, res) => {
+  // Lấy giá trị callback từ query parameters
+  const callbackName = req.query.callback;
+  const {sheetName, range} = req.query;
+
+  // Kiểm tra cache trước
+  const now = Date.now();
+  if (cachedData && (now - lastFetch) < CACHE_DURATION) {
+    console.log('Cache hit - returning cached data');
+    const jsonString = JSON.stringify(cachedData);
+    
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+    return;
+  }
+
+  let result = {}; // Khởi tạo đối tượng result để chứa kết quả cuối cùng
+
+  try {
+    // Sử dụng authenticated client đã được cache
+    const sheets = await getAuthenticatedClient();
+
+    const range = `${sheetName}!${range}`;
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: range,
+      valueRenderOption: 'FORMATTED_VALUE', 
+    });
+
+    const values = response.data.values;
+
+    if (!values || values.length < 2) {
+      result = { headers: [], rows: [], error: 'Không tìm thấy dữ liệu hoặc dữ liệu không đủ trong Google Sheet F3.' };
+    } else {
+      const headers = values[0];
+      // Giới hạn số lượng rows để tránh memory issues
+      let dataRows = values.slice(1, MAX_ROWS + 1);
+
+      // --- Xác định cột để sắp xếp
+      const SORT_COL = "Ngày Kế toán đối soát với FFM lần 2";
+      const sortIdx = headers.indexOf(SORT_COL);
+
+      // --- Tối ưu sorting function
+      if (sortIdx !== -1) {
+        dataRows.sort((a, b) => {
+          const valA = a[sortIdx];
+          const valB = b[sortIdx];
+          
+          if (!valA) return 1;
+          if (!valB) return -1;
+          
+          const timeA = new Date(valA).getTime();
+          const timeB = new Date(valB).getTime();
+          
+          if (isNaN(timeA)) return 1;
+          if (isNaN(timeB)) return -1;
+          
+          return timeB - timeA;
+        });
+      }
+
+      // --- Tối ưu mapping với for loop thay vì forEach
+      const resultRows = dataRows.map((row) => {
+        const obj = {};
+        for (let ci = 0; ci < row.length && ci < headers.length; ci++) {
+          const header = headers[ci];
+          let value = row[ci];
+
+          if (header !== SORT_COL && value && isDateString(value)) {
+            const parsedDate = new Date(value);
+            if (!isNaN(parsedDate.getTime())) {
+              value = formatDateToMMddyyyy(parsedDate);
+            }
+          }
+          obj[header] = value;
+        }
+        return obj;
+      });
+
+      result = { headers: headers, rows: resultRows };
+    }
+
+    // Lưu vào cache nếu thành công
+    if (!result.error) {
+      cachedData = result;
+      lastFetch = now;
+      console.log('Data cached successfully');
+    }
+
+  } catch (error) {
+    console.error('Lỗi khi lấy dữ liệu từ Google Sheet:', error.message);
+    result = { error: 'Đã xảy ra lỗi khi lấy dữ liệu từ Google Sheet.', details: error.message };
+    // Đặt status code cho lỗi, nhưng vẫn sẽ được bọc trong JSONP nếu có callback
+    res.status(500); 
+  }
+
+  const jsonString = JSON.stringify(result);
+
+  if (callbackName) {
+    // Trả về JSONP nếu có callback
+    res.set('Content-Type', 'application/javascript');
+    res.send(`${callbackName}(${jsonString});`);
+  } else {
+    // Trả về JSON thông thường
+    res.set('Content-Type', 'application/json');
+    res.send(jsonString);
+  }
+});
+
 
 export default router;
