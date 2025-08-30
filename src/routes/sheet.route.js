@@ -181,7 +181,7 @@ router.get('/getAll', async (req, res) => {
 router.get('/getSheets', async (req, res) => {
   // Lấy giá trị callback từ query parameters
   const callbackName = req.query.callback;
-  const {sheetName, rangeSheet} = req.query;
+  const {sheetName, rangeSheet, spreadsheetId} = req.query;
 
   // Tạo cache key cho sheet này
   const cacheKey = `${sheetName}_${rangeSheet}`;
@@ -211,7 +211,7 @@ router.get('/getSheets', async (req, res) => {
 
     const range = `${sheetName}!${rangeSheet}`;
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: spreadsheetId ? spreadsheetId : SPREADSHEET_ID,
       range: range,
       valueRenderOption: 'FORMATTED_VALUE', 
     });
