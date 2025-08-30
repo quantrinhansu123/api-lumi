@@ -218,12 +218,20 @@ router.get('/getSheets', async (req, res) => {
 
     const values = response.data.values;
 
+
     if (!values || values.length < 2) {
       result = { headers: [], rows: [], error: 'Không tìm thấy dữ liệu hoặc dữ liệu không đủ trong Google Sheet F3.' };
     } else {
       const headers = values[0];
       let dataRows = values.slice(1);
-      result = { headers: headers, rows: dataRows };
+      const data = dataRows.map(row => {
+        const obj = {};
+        headers.forEach((header, index) => {
+          obj[header] = row[index];
+        });
+        return obj;
+      });
+      result = { headers: headers, rows: data };
     }
 
     // Lưu vào cache nếu thành công
@@ -379,7 +387,7 @@ router.post('/updateSheets', async (req, res) => {
 });
 
 // Route để xóa cache
-router.delete('/clearCache', (req, res) => {
+router.get('/clearCache', (req, res) => {
   const {cacheKey} = req.query;
   
   if (cacheKey) {
