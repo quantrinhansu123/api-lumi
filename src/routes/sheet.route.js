@@ -88,8 +88,8 @@ router.get('/getAll', async (req, res) => {
     // Sử dụng authenticated client đã được cache
     const sheets = await getAuthenticatedClient();
 
-    // 2. Lấy dữ liệu từ Sheet "test f3"
-    const range = 'test f3!A:DA';
+    // 2. Lấy dữ liệu từ Sheet "F3"
+    const range = 'F3!A:DA';
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: range,
@@ -290,7 +290,7 @@ router.post('/updateSheets', async (req, res) => {
   
   try {
     const sheets = await getAuthenticatedClient();
-    const sheetName = 'test f3'; // Hoặc lấy từ req.body.sheetName
+    const sheetName = 'F3'; // Hoặc lấy từ req.body.sheetName
     
     // Lấy headers
     const headerResponse = await sheets.spreadsheets.values.get({
@@ -427,7 +427,7 @@ router.post('/updateSheets', async (req, res) => {
 // Thêm route POST để insert mã đơn hàng vào sheet MGT nội bộ
 router.post('/insertMGT', async (req, res) => {
   const callbackName = req.query.callback;
-  const SHEET_NAME = "test mgt nội bộ"; // tên sheet bạn đang dùng
+  const SHEET_NAME = "MGT nội bộ"; // tên sheet bạn đang dùng
   const COL_INDEX = 1; // chỉ có 1 cột duy nhất (A = 1)
   
   try {
