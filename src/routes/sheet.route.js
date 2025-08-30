@@ -538,5 +538,133 @@ router.get('/cacheStatus', (req, res) => {
   });
 });
 
+router.post('/quickUpdateF3', async (req, res) => {
+  const callbackName = req.query.callback;
+  try {
+    // Đọc field 'rows' từ form-urlencoded
+    let updates;
+    if (typeof req.body.rows === 'string') {
+      updates = JSON.parse(req.body.rows);
+    } else {
+      throw new Error("Thiếu field 'rows' (x-www-form-urlencoded).");
+    }
+    if (!Array.isArray(updates) || updates.length === 0) {
+      throw new Error("'rows' rỗng.");
+    }
+
+    const sheets = await getAuthenticatedClient();
+    const sheetName = 'F3';
+
+    // Lấy headers
+    const headerResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheetName}!1:1`,
+    });
+    const headers = headerResponse.data.values[0];
+
+    // Xác định index các cột
+    const COL_ID   = "Mã đơn hàng";
+    const COL_SHIP = "Trạng thái giao hàng NB";
+    const COL_CASH = "Trạng thái thu tiền";
+    const idColIdx   = headers.indexOf(COL_ID);
+    const shipColIdx = headers.indexOf(COL_SHIP);
+    const cashColIdx = headers.indexOf(COL_CASH);
+
+    const missing = [];
+    if (idColIdx   === -1) missing.push(COL_ID);
+    if (shipColIdx === -1) missing.push(COL_SHIP);
+    if (cashColIdx === -1) missing.push(COL_CASH);
+    if (missing.length) {
+      throw new Error(`Thiếu cột bắt buộc: ${missing.join(", ")}`);
+    }
+
+    // Đọc duy nhất cột ID để lập map
+    const idResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheetName}!${numberToColumnLetter(idColIdx + 1)}2:${numberToColumnLetter(idColIdx + 1)}`,
+    });
+    const idValues = idResponse.data.values || [];
+    const rowMap = new Map();
+    idValues.forEach((row, i) => {
+      const v = row[0];
+      if (v) rowMap.set(String(v), i + 2); // +2 vì header ở dòng 1
+    });
+
+    // Gom các ô cần ghi
+    const dataPayload = [];
+    const notFound = [];
+    let updatedCells = 0;
+
+    updates.forEach((obj) => {
+      const orderId = obj[COL_ID];
+      if (!orderId) return;
+      const r = rowMap.get(String(orderId));
+      if (!r) { notFound.push(orderId); return; }
+      if (Object.prototype.hasOwnProperty.call(obj, COL_SHIP)) {
+        const a1 = numberToColumnLetter(shipColIdx + 1) + r;
+        dataPayload.push({ range: `${sheetName}!${a1}`, values: [[ obj[COL_SHIP] ]] });
+        updatedCells++;
+      }
+      if (Object.prototype.hasOwnProperty.call(obj, COL_CASH)) {
+        const a1 = numberToColumnLetter(cashColIdx + 1) + r;
+        dataPayload.push({ range: `${sheetName}!${a1}`, values: [[ obj[COL_CASH] ]] });
+        updatedCells++;
+      }
+    });
+
+    if (dataPayload.length === 0) {
+      const result = { updated_cells: 0, not_found: notFound, message: "Không có ô nào cần cập nhật." };
+      const jsonString = JSON.stringify(result);
+      res.status(200);
+      if (callbackName) {
+        res.set('Content-Type', 'application/javascript');
+        res.send(`${callbackName}(${jsonString});`);
+      } else {
+        res.set('Content-Type', 'application/json');
+        res.send(jsonString);
+      }
+      return;
+    }
+
+    // Batch update 1 lần
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: dataPayload
+      }
+    });
+
+    // Clear cache nếu cần
+    cache.clear();
+
+    const result = {
+      updated_cells: updatedCells,
+      not_found: notFound,
+      message: `Đã ghi ${updatedCells} ô${notFound.length ? `; không tìm thấy ${notFound.length} mã` : ""}.`
+    };
+    const jsonString = JSON.stringify(result);
+    res.status(200);
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+  } catch (err) {
+    const result = { error: err.message };
+    const jsonString = JSON.stringify(result);
+    res.status(400);
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+  }
+});
+
 
 export default router;
