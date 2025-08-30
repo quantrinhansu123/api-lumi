@@ -671,5 +671,439 @@ router.post('/quickUpdateF3', async (req, res) => {
   }
 });
 
+// Thêm constants cho các spreadsheet IDs
+const NHAN_SU_SPREADSHEET_ID = "1Cl-56By1eYFB4G7ITuG0IQhH39ITwo0AkZPFvsLfo54"; // ID của sheet Nhân sự
+const NHAN_SU_SHEET_NAME = "Nhân sự"; // Tên sheet Nhân sự
+
+/**
+ * Chuyển đổi số sê-ri của Google Sheets thành đối tượng Date của JavaScript.
+ * @param {number} serialNumber Số sê-ri ngày tháng từ Google Sheets.
+ * @return {Date} Đối tượng Date tương ứng.
+ */
+const serialToDate = (serialNumber) => {
+  // 25569 là số ngày chênh lệch giữa mốc 30/12/1899 của Sheets
+  // và mốc 01/01/1970 của JavaScript.
+  const daysOffset = 25569;
+  const jsTimestamp = (serialNumber - daysOffset) * 24 * 60 * 60 * 1000;
+  return new Date(jsTimestamp);
+};
+
+/**
+ * Chuyển đổi số sê-ri thành ISO string
+ * @param {number} serialNumber Số sê-ri ngày tháng từ Google Sheets.
+ * @return {string} ISO string của ngày.
+ */
+const getISOString = (serialNumber) => {
+  if (!serialNumber) return "";
+  const dateObject = serialToDate(serialNumber);
+  return dateObject.toISOString();
+};
+
+/**
+ * Hàm lấy thông tin nhân sự theo email
+ * @param {string} email Email cần tìm
+ * @param {Array<Array<any>>} data Dữ liệu nhân sự
+ * @returns {Object} Thông tin nhân sự
+ */
+const getNhanSuInfoByEmailPro = (email, data) => {
+  if (!email || !data || data.length < 2) return {}; // Kiểm tra data hợp lệ
+  try {
+    const headers = data[0];
+    const rows = data.slice(1);
+
+    // LƯU Ý: Hãy thay "Chức vụ" bằng đúng tên cột trong Sheet của bạn
+    const chucVuHeaderName = "Vị trí"; // <-- Thay đổi ở đây nếu cần
+
+    const emailCol = headers.indexOf("email");
+    const teamCol = headers.indexOf("Team");
+    const tenCol = headers.indexOf("Họ Và Tên");
+    const idNsCol = headers.indexOf("id");
+    const chucVuCol = headers.indexOf(chucVuHeaderName);
+
+    // Thêm chucVuCol vào điều kiện kiểm tra
+    if ([emailCol, teamCol, tenCol, idNsCol, chucVuCol].some(index => index === -1)) {
+      console.error("Không tìm thấy một hoặc nhiều cột cần thiết. Hãy kiểm tra lại tên cột.");
+      return {};
+    }
+
+    for (const row of rows) {
+      if (row[emailCol] === email) {
+        return {
+          Team: row[teamCol],
+          'Tên': row[tenCol],
+          id_NS: row[idNsCol],
+          'Chức vụ': row[chucVuCol] || '' // Trả về chuỗi rỗng nếu ô chức vụ bị trống
+        };
+      }
+    }
+    return {}; // Trả về object rỗng nếu không tìm thấy email
+  } catch (e) {
+    console.error("Lỗi khi lấy thông tin nhân sự: " + e.message);
+    return {};
+  }
+};
+
+/**
+ * Hàm xử lý mặc định cho các tableName khác
+ * @param {Array<Array<any>>} values - Dữ liệu thô từ trang tính.
+ * @param {Array<Array<any>>} dataNs - Dữ liệu nhân sự (nếu có).
+ * @returns {Object} - Đối tượng chứa dữ liệu đã được xử lý.
+ */
+const processDefault = (values, dataNs = null) => {
+  if (values.length === 0) {
+    return { headers: [], data: [] };
+  }
+
+  const headers = values[0];
+  const rows = values.slice(1);
+  const data = rows.map(row => {
+    let obj = {};
+    headers.forEach((h, i) => {
+      if (h === 'Ngày') {
+        obj[h] = getISOString(row[i] || "");
+      } else {
+        obj[h] = row[i] || "";
+      }
+    });
+    return obj;
+  });
+
+  return { headers, data };
+};
+
+/**
+ * Hàm xử lý riêng cho tableName "Báo cáo MKT"
+ * @param {Array<Array<any>>} values - Dữ liệu thô từ trang tính (bao gồm cả hàng tiêu đề).
+ * @param {Array<Array<any>>} dataNs - Dữ liệu nhân sự.
+ * @param {Array<Array<any>>} dataOrder - Dữ liệu đơn hàng.
+ * @returns {Object} - Đối tượng chứa dữ liệu đã được xử lý.
+ */
+const processMktReport = (values, dataNs, dataOrder) => {
+  if (values.length === 0) {
+    return { headers: [], data: [] };
+  }
+
+  const headerOrders = dataOrder[0];
+  const ngayOrderIndex = headerOrders.indexOf("Ngày lên đơn");
+  const nhanVienOrderIndex = headerOrders.indexOf("Nhân viên Marketing");
+  const matHangOrderIndex = headerOrders.indexOf("Mặt hàng");
+  const khuVucOrderIndex = headerOrders.indexOf("Khu vực");
+  const ketQuaCheckOrderIndex = headerOrders.indexOf("Kết quả Check");
+  const tongTienOrderIndex = headerOrders.indexOf("Tổng tiền VNĐ");
+
+  const headers = values[0];
+  const rows = values.slice(1);
+
+  // Set để theo dõi các tổ hợp đã được xử lý
+  const processedKeys = new Set();
+
+  const data = rows.map(row => {
+    let obj = {};
+    // 1. Tạo đối tượng cơ bản từ dữ liệu hàng hiện tại
+    headers.forEach((h, i) => {
+      if (h === 'Ngày') {
+        obj[h] = getISOString(row[i] || "");
+      } else {
+        obj[h] = row[i] || "";
+      }
+      if (h === 'Email') {
+        const info = getNhanSuInfoByEmailPro(row[i], dataNs);
+        obj['Chức vụ'] = info['Chức vụ'];
+      }
+    });
+
+    // 2. Tạo một khóa duy nhất từ các cột được chỉ định
+    const key = `${obj['Tên']}|${obj['Ngày']}|${obj['ca']}|${obj['Sản_phẩm']}|${obj['Thị_trường']}`;
+
+    // 3. Kiểm tra xem khóa này đã được xử lý chưa
+    if (processedKeys.has(key)) {
+      // Nếu đã xử lý, bỏ qua phần tính toán và trả về đối tượng đã có giá trị cũ
+      // Các giá trị cũ đã được điền ở bước 1
+    } else {
+      // Nếu đây là lần đầu tiên gặp khóa này
+      // Đánh dấu là đã xử lý
+      processedKeys.add(key);
+
+      // Thực hiện các phép tính toán tốn kém
+      const listOrder = dataOrder.filter((item, index) => {
+        const date = serialToDate(row[3]); // Giả sử cột 'Ngày' ở index 3
+        date.setHours(0, 0, 0, 0);
+
+        const orderDate = new Date(item[ngayOrderIndex]);
+        orderDate.setHours(0, 0, 0, 0);
+
+        return orderDate.getTime() === date.getTime() && 
+               item[nhanVienOrderIndex] === obj['Tên'] && 
+               item[matHangOrderIndex] === obj['Sản_phẩm'] && 
+               item[khuVucOrderIndex] === obj['Thị_trường'];
+      });
+
+      // Cập nhật các trường tính toán vào đối tượng
+      obj['Số đơn thực tế'] = listOrder.length;
+      // console.log('listOrder:', JSON.stringify(listOrder));
+
+      obj['Doanh thu chốt thực tế'] = listOrder.reduce((sum, item) => sum + (item[tongTienOrderIndex] || 0), 0);
+      obj['Doanh số đi thực tế'] = listOrder.reduce((sum, item) => {
+        return sum + (item[ketQuaCheckOrderIndex] === 'OK' ? (item[tongTienOrderIndex] || 0) : 0);
+      }, 0);
+      obj['Doanh số hoàn hủy thực tế'] = listOrder.reduce((sum, item) => {
+        return sum + (item[ketQuaCheckOrderIndex] === 'Huỷ' || item[ketQuaCheckOrderIndex] === 'Hoàn' ? (item[tongTienOrderIndex] || 0) : 0);
+      }, 0);
+      obj['Số đơn hoàn hủy thực tế'] = listOrder.reduce((sum, item) => {
+        return sum + (item[ketQuaCheckOrderIndex] === 'Huỷ' || item[ketQuaCheckOrderIndex] === 'Hoàn' ? 1 : 0);
+      }, 0);
+      obj['Doanh số sau hoàn hủy thực tế'] = listOrder.reduce((sum, item) => {
+        return sum + (item[ketQuaCheckOrderIndex] !== 'Huỷ' && item[ketQuaCheckOrderIndex] !== 'Hoàn' ? (item[tongTienOrderIndex] || 0) : 0);
+      }, 0);
+      obj.listOrder = listOrder;
+    }
+
+    return obj;
+  });
+
+  const newHeaders = [
+    'Số đơn thực tế',
+    'Doanh thu chốt thực tế',
+    'Doanh số đi thực tế',
+    'Doanh số hoàn hủy thực tế',
+    'Số đơn hoàn hủy thực tế',
+    'Doanh số sau hoàn hủy thực tế'
+  ];
+
+  // Đảm bảo các headers mới được thêm vào đúng cách
+  const finalHeaders = [...headers];
+  newHeaders.forEach(h => {
+    if (!finalHeaders.includes(h)) {
+      finalHeaders.push(h);
+    }
+  });
+
+  return { headers: finalHeaders, data };
+};
+
+/**
+ * Hàm xử lý riêng cho tableName "Báo cáo sale"
+ * @param {Array<Array<any>>} values - Dữ liệu thô từ trang tính (bao gồm cả hàng tiêu đề).
+ * @param {Array<Array<any>>} dataNs - Dữ liệu nhân sự.
+ * @param {Array<Array<any>>} dataOrder - Dữ liệu đơn hàng.
+ * @returns {Object} - Đối tượng chứa dữ liệu đã được xử lý.
+ */
+const processSalesReport = (values, dataNs, dataOrder) => {
+  if (values.length === 0) {
+    return { headers: [], data: [] };
+  }
+
+  const headerOrders = dataOrder[0];
+  const ngayOrderIndex = headerOrders.indexOf("Ngày lên đơn");
+  const nhanVienOrderIndex = headerOrders.indexOf("Nhân viên Sale");
+  const matHangOrderIndex = headerOrders.indexOf("Mặt hàng");
+  const khuVucOrderIndex = headerOrders.indexOf("Khu vực");
+  const ketQuaCheckOrderIndex = headerOrders.indexOf("Kết quả Check");
+  const tongTienOrderIndex = headerOrders.indexOf("Tổng tiền VNĐ");
+  
+  const headers = values[0];
+  const rows = values.slice(1);
+  
+  const data = rows.map(row => {
+    let obj = {};
+    headers.forEach((h, i) => {
+      if (h === 'Ngày') {
+        obj[h] = getISOString(row[i] || "");
+      } else {
+        obj[h] = row[i] || "";
+      }
+      if (h === 'Email') {
+        const info = getNhanSuInfoByEmailPro(row[i], dataNs);
+        obj['Chức vụ'] = info['Chức vụ'];
+      }
+    });
+    
+    const listOrder = dataOrder.filter((item, index) => {
+      const date = serialToDate(row[3]);
+      date.setHours(0, 0, 0, 0);
+
+      const orderDate = new Date(item[ngayOrderIndex]);
+      orderDate.setHours(0, 0, 0, 0);
+
+      return orderDate.getTime() === date.getTime() && 
+             item[nhanVienOrderIndex] === obj['Tên'] && 
+             item[matHangOrderIndex] === obj['Sản phẩm'] && 
+             item[khuVucOrderIndex] === obj['Thị trường'];
+    });
+    
+    obj['Số đơn thực tế'] = listOrder.length;
+    // console.log('listOrder:', JSON.stringify(listOrder));
+
+    obj['Doanh thu chốt thực tế'] = listOrder.reduce((sum, item) => sum + (item[tongTienOrderIndex] || 0), 0);
+    obj['Doanh số đi thực tế'] = listOrder.reduce((sum, item) => {
+      return sum + (item[ketQuaCheckOrderIndex] === 'OK' ? (item[tongTienOrderIndex] || 0) : 0);
+    }, 0);
+    obj['Doanh số hoàn hủy thực tế'] = listOrder.reduce((sum, item) => {
+      return sum + (item[ketQuaCheckOrderIndex] === 'Huỷ' || item[ketQuaCheckOrderIndex] === 'Hoàn' ? (item[tongTienOrderIndex] || 0) : 0);
+    }, 0);
+    obj['Số đơn hoàn hủy thực tế'] = listOrder.reduce((sum, item) => {
+      return sum + (item[ketQuaCheckOrderIndex] === 'Huỷ' || item[ketQuaCheckOrderIndex] === 'Hoàn' ? 1 : 0);
+    }, 0);
+    obj['Doanh số sau hoàn hủy thực tế'] = listOrder.reduce((sum, item) => {
+      return sum + (item[ketQuaCheckOrderIndex] !== 'Huỷ' && item[ketQuaCheckOrderIndex] !== 'Hoàn' ? (item[tongTienOrderIndex] || 0) : 0);
+    }, 0);
+    
+    return obj;
+  });
+
+  return { 
+    headers: [...headers, 'Số đơn thực tế', 'Doanh thu chốt thực tế', 'Doanh số đi thực tế', 'Doanh số hoàn hủy thực tế', 'Số đơn hoàn hủy thực tế', 'Doanh số sau hoàn hủy thực tế'], 
+    data 
+  };
+};
+
+// Thêm route mới để xử lý báo cáo
+router.get('/getReport', async (req, res) => {
+  const callbackName = req.query.callback;
+  const { tableName, spreadsheetId } = req.query;
+
+  if (!tableName) {
+    const result = { error: "Vui lòng cung cấp đủ tham số 'tableName'" };
+    const jsonString = JSON.stringify(result);
+    
+    res.status(400);
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+    return;
+  }
+
+  // Tạo cache key
+  const cacheKey = `report_${tableName}_${spreadsheetId || 'default'}`;
+  
+  // Kiểm tra cache
+  const now = Date.now();
+  const cached = cache.get(cacheKey);
+  if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+    console.log('Cache hit - returning cached data for:', cacheKey);
+    const jsonString = JSON.stringify(cached.data);
+    
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+    return;
+  }
+
+  try {
+    const sheets = await getAuthenticatedClient();
+    const targetSpreadsheetId = spreadsheetId || SPREADSHEET_ID;
+    const info = {
+      'Báo cáo MKT': 'A:AB',
+      'Báo cáo Sale': 'A:Y'
+    }
+
+    // 1. Lấy dữ liệu từ sheet được yêu cầu
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: targetSpreadsheetId,
+      range: `${tableName}!${info[tableName] || 'A:Z'}`,
+      valueRenderOption: 'UNFORMATTED_VALUE',
+    });
+
+    const values = response.data.values || [];
+
+    if (values.length === 0) {
+      const result = { error: `Không tìm thấy dữ liệu trong sheet ${tableName}` };
+      const jsonString = JSON.stringify(result);
+      
+      res.status(404);
+      if (callbackName) {
+        res.set('Content-Type', 'application/javascript');
+        res.send(`${callbackName}(${jsonString});`);
+      } else {
+        res.set('Content-Type', 'application/json');
+        res.send(jsonString);
+      }
+      return;
+    }
+
+    let result;
+    let dataNs = null;
+    let dataOrder = null;
+
+    // Lấy dữ liệu phụ trợ cho các báo cáo đặc biệt
+    if (tableName === "Báo cáo MKT" || tableName === "Báo cáo sale") {
+      try {
+        // Lấy dữ liệu nhân sự
+        const nhanSuResponse = await sheets.spreadsheets.values.get({
+          spreadsheetId: NHAN_SU_SPREADSHEET_ID,
+          range: `${NHAN_SU_SHEET_NAME}!A:Z`,
+          valueRenderOption: 'UNFORMATTED_VALUE',
+        });
+        dataNs = nhanSuResponse.data.values || [];
+
+        // Lấy dữ liệu đơn hàng từ sheet F3
+        const orderResponse = await sheets.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range: 'F3!A:DA',
+          valueRenderOption: 'UNFORMATTED_VALUE',
+        });
+        dataOrder = orderResponse.data.values || [];
+      } catch (error) {
+        console.error('Error loading supporting data:', error);
+        // Tiếp tục với dữ liệu rỗng nếu không lấy được dữ liệu phụ trợ
+        dataNs = [];
+        dataOrder = [];
+      }
+    }
+
+    // Xử lý dữ liệu theo loại báo cáo
+    switch (tableName) {
+      case "Báo cáo MKT":
+        result = processMktReport(values, dataNs, dataOrder);
+        break;
+      case "Báo cáo sale":
+        result = processSalesReport(values, dataNs, dataOrder);
+        break;
+      default:
+        result = processDefault(values, dataNs);
+        break;
+    }
+
+    // Lưu vào cache
+    cache.set(cacheKey, {
+      data: result,
+      timestamp: now
+    });
+    // console.log('Data cached successfully for:', cacheKey);
+
+    const jsonString = JSON.stringify(result);
+
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+
+  } catch (error) {
+    console.error('Lỗi khi xử lý báo cáo:', error.message);
+    const result = { error: 'Đã xảy ra lỗi khi xử lý báo cáo.', details: error.message };
+    const jsonString = JSON.stringify(result);
+    
+    res.status(500);
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+  }
+});
+
 
 export default router;
