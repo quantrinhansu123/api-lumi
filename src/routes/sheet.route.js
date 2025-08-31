@@ -141,7 +141,6 @@ router.get('/getAll', async (req, res) => {
       }
       if (nvVanDon) {
         const listNvVanDon = nvVanDon.split(',').map(item => item.trim());
-        console.log('Filtered NV Vận đơn:', listNvVanDon);
         dataRows = dataRows.filter(row => listNvVanDon.includes(row[headers.indexOf("NV Vận đơn")]));
       }
       if (ketQuaCheck) {
