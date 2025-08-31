@@ -128,16 +128,26 @@ router.get('/getAll', async (req, res) => {
       //lọc dữ liệu theo query trước khi xử lý
 
       if (tuNgay) {
-        dataRows = dataRows.filter(row => new Date(row[headers.indexOf("Ngày lên đơn")]) >= new Date(tuNgay) || new Date());
+        const tuNgayObj = new Date(tuNgay);
+        tuNgayObj.setHours(0, 0, 0, 0);
+        dataRows = dataRows.filter(row => {
+          const ngayLenDon = new Date(row[headers.indexOf("Ngày lên đơn")]);
+          return ngayLenDon >= tuNgayObj || isNaN(ngayLenDon);
+        });
       }
       if (denNgay) {
-        dataRows = dataRows.filter(row => new Date(row[headers.indexOf("Ngày lên đơn")]) <= new Date(denNgay) || new Date());
+        const denNgayObj = new Date(denNgay);
+        denNgayObj.setHours(0, 0, 0, 0);
+        dataRows = dataRows.filter(row => {
+          const ngayLenDon = new Date(row[headers.indexOf("Ngày lên đơn")]);
+          return ngayLenDon <= denNgayObj || isNaN(ngayLenDon);
+        });
       }
       if (sanPham) {
-        dataRows = dataRows.filter(row => row[headers.indexOf("Mặt hàng")] === sanPham);
+        dataRows = dataRows.filter(row => String(row[headers.indexOf("Mặt hàng")]).toLocaleLowerCase() === sanPham);
       }
       if (thiTruong) {
-        dataRows = dataRows.filter(row => row[headers.indexOf("Khu vực")] === thiTruong);
+        dataRows = dataRows.filter(row => String(row[headers.indexOf("Khu vực")]).toLocaleLowerCase() === thiTruong);
       }
       if (nvVanDon) {
         const listNvVanDon = nvVanDon.split(',').map(item => item.trim());
