@@ -129,32 +129,56 @@ router.get('/getAll', async (req, res) => {
 
       if (tuNgay) {
         const tuNgayObj = new Date(tuNgay);
-        tuNgayObj.setHours(0, 0, 0, 0);
+        const tuNgayOnly = new Date(tuNgayObj.getFullYear(), tuNgayObj.getMonth(), tuNgayObj.getDate());
+
         dataRows = dataRows.filter(row => {
-          const ngayLenDon = new Date(row[headers.indexOf("Ngày lên đơn")]);
-          return ngayLenDon >= tuNgayObj || isNaN(ngayLenDon);
+          const ngayLenDonStr = row[headers.indexOf("Ngày lên đơn")];
+          if (!ngayLenDonStr) return false;
+
+          const ngayLenDonObj = new Date(ngayLenDonStr);
+          if (isNaN(ngayLenDonObj.getTime())) return false;
+
+          const ngayLenDonOnly = new Date(ngayLenDonObj.getFullYear(), ngayLenDonObj.getMonth(), ngayLenDonObj.getDate());
+
+          return ngayLenDonOnly >= tuNgayOnly;
         });
       }
       if (denNgay) {
         const denNgayObj = new Date(denNgay);
-        denNgayObj.setHours(0, 0, 0, 0);
+        const denNgayOnly = new Date(denNgayObj.getFullYear(), denNgayObj.getMonth(), denNgayObj.getDate());
+
         dataRows = dataRows.filter(row => {
-          const ngayLenDon = new Date(row[headers.indexOf("Ngày lên đơn")]);
-          return ngayLenDon <= denNgayObj || isNaN(ngayLenDon);
+          const ngayLenDonStr = row[headers.indexOf("Ngày lên đơn")];
+          if (!ngayLenDonStr) return false;
+
+          const ngayLenDonObj = new Date(ngayLenDonStr);
+          if (isNaN(ngayLenDonObj.getTime())) return false;
+
+          const ngayLenDonOnly = new Date(ngayLenDonObj.getFullYear(), ngayLenDonObj.getMonth(), ngayLenDonObj.getDate());
+
+          return ngayLenDonOnly <= denNgayOnly;
         });
       }
+      // console.log('Filtered data rows:', dataRows);
+
       if (sanPham) {
-        dataRows = dataRows.filter(row => String(row[headers.indexOf("Mặt hàng")]).toLocaleLowerCase() === sanPham);
+        dataRows = dataRows.filter(row => String(row[headers.indexOf("Mặt hàng")]).toLocaleLowerCase().startsWith(String(sanPham).toLocaleLowerCase()));
       }
       if (thiTruong) {
-        dataRows = dataRows.filter(row => String(row[headers.indexOf("Khu vực")]).toLocaleLowerCase() === thiTruong);
+        dataRows = dataRows.filter(row => String(row[headers.indexOf("Khu vực")]).toLocaleLowerCase() === String(thiTruong).toLocaleLowerCase());
       }
+
+
       if (nvVanDon) {
         const listNvVanDon = nvVanDon.split(',').map(item => item.trim());
-        dataRows = dataRows.filter(row => listNvVanDon.includes(row[headers.indexOf("NV Vận đơn")]));
+
+        dataRows = dataRows.filter(row => {
+          const nvValue = row[headers.indexOf("NV Vận đơn")]?.trim(); // Thêm trim ở đây
+          return listNvVanDon.includes(nvValue);
+        });
       }
       if (ketQuaCheck) {
-        dataRows = dataRows.filter(row => row[headers.indexOf("Kết quả Check")] === ketQuaCheck);
+        dataRows = dataRows.filter(row => String(row[headers.indexOf("Kết quả Check")]).toLocaleLowerCase() === String(ketQuaCheck).toLocaleLowerCase());
       }
       if (dvvc) {
         const listDvvc = dvvc.split(',').map(item => {
@@ -164,15 +188,19 @@ router.get('/getAll', async (req, res) => {
         dataRows = dataRows.filter(row => listDvvc.includes(row[headers.indexOf("Đơn vị vận chuyển")]));
       }
       if (trangThaiThuTien) {
-        dataRows = dataRows.filter(row => row[headers.indexOf("Trạng thái thu tiền")] === trangThaiThuTien);
+        dataRows = dataRows.filter(row => String(row[headers.indexOf("Trạng thái thu tiền")]).toLocaleLowerCase() === String(trangThaiThuTien).toLocaleLowerCase());
       }
       if (nvMkts) {
         const listNvMkts = nvMkts.split(',').map(item => item.trim());
-        dataRows = dataRows.filter(row => listNvMkts.includes(row[headers.indexOf("Nhân viên Marketing")]));
+        dataRows = dataRows.filter(row => {
+          return listNvMkts.includes(row[headers.indexOf("Nhân viên Marketing")]?.trim());
+        });
       }
       if (nvSale) {
         const listNvSale = nvSale.split(',').map(item => item.trim());
-        dataRows = dataRows.filter(row => listNvSale.includes(row[headers.indexOf("Nhân viên Sale")]));
+        dataRows = dataRows.filter(row => {
+          return listNvSale.includes(row[headers.indexOf("Nhân viên Sale")]?.trim());
+        });
       }
 
       //url test
