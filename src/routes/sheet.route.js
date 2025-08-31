@@ -128,10 +128,15 @@ router.get('/getAll', async (req, res) => {
         });
       }
 
-      // --- Tối ưu mapping với for loop thay vì forEach
-      const resultRows = dataRows.map((row) => {
+      // --- Tối ưu mapping với for loop thay vì map + forEach
+      const resultRows = new Array(dataRows.length); // Pre-allocate array
+      
+      for (let i = 0; i < dataRows.length; i++) {
+        const row = dataRows[i];
         const obj = {};
-        for (let ci = 0; ci < row.length && ci < headers.length; ci++) {
+        const rowLength = Math.min(row.length, headers.length);
+        
+        for (let ci = 0; ci < rowLength; ci++) {
           const header = headers[ci];
           let value = row[ci];
 
@@ -143,8 +148,9 @@ router.get('/getAll', async (req, res) => {
           }
           obj[header] = value;
         }
-        return obj;
-      });
+        
+        resultRows[i] = obj;
+      }
 
       result = { headers: headers, rows: resultRows };
     }
@@ -203,13 +209,23 @@ router.get('/getSheets', async (req, res) => {
     } else {
       const headers = values[0];
       let dataRows = values.slice(1);
-      const data = dataRows.map(row => {
+      
+      // TỐI ƯU: Dùng for loops thuần thay vì map + forEach
+      const data = new Array(dataRows.length); // Pre-allocate array
+      const headersLength = headers.length;
+      
+      for (let i = 0; i < dataRows.length; i++) {
         const obj = {};
-        headers.forEach((header, index) => {
-          obj[header] = row[index];
-        });
-        return obj;
-      });
+        const row = dataRows[i];
+        
+        // Dùng for thay vì forEach để tránh function call overhead
+        for (let j = 0; j < headersLength; j++) {
+          obj[headers[j]] = row[j] || ''; // Thêm fallback cho undefined
+        }
+        
+        data[i] = obj;
+      }
+      
       result = { headers: headers, rows: data };
     }
 
@@ -660,6 +676,107 @@ router.post('/quickUpdateF3', async (req, res) => {
   } catch (err) {
     const result = { error: err.message };
     const jsonString = JSON.stringify(result);
+    res.status(400);
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+  }
+});
+
+router.post('/updateCell', async (req, res) => {
+  const callbackName = req.query.callback;
+  
+  try {
+    let cellData;
+    if (typeof req.body.data === 'string') {
+      cellData = JSON.parse(req.body.data);
+    } else {
+      cellData = req.body.data || req.body;
+    }
+
+    const { 
+      sheetName = 'F3',
+      idValue,
+      columnName,
+      value
+    } = cellData;
+
+    if (!idValue || !columnName || value === undefined) {
+      throw new Error("Thiếu: idValue, columnName, value");
+    }
+
+    const sheets = await getAuthenticatedClient();
+
+    // Lấy tất cả data một lần
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheetName}!A1:ZZ`,
+    });
+    
+    const allValues = response.data.values || [];
+    if (allValues.length < 2) {
+      throw new Error(`Sheet ${sheetName} không có dữ liệu`);
+    }
+
+    const headers = allValues[0];
+    const dataRows = allValues.slice(1);
+
+    // Tìm vị trí với for loop tối ưu
+    const targetColIdx = headers.indexOf(columnName);
+    const idColIdx = headers.indexOf("Mã đơn hàng");
+
+    if (targetColIdx === -1) throw new Error(`Không tìm thấy cột: ${columnName}`);
+    if (idColIdx === -1) throw new Error(`Không tìm thấy cột ID`);
+
+    // Tìm row với for loop và early exit
+    let targetRow = -1;
+    const searchId = String(idValue);
+    
+    for (let i = 0; i < dataRows.length; i++) {
+      if (String(dataRows[i][idColIdx] || '') === searchId) {
+        targetRow = i + 2; // +2 for header and 0-based
+        break; // EARLY EXIT - quan trọng!
+      }
+    }
+
+    if (targetRow === -1) {
+      throw new Error(`Không tìm thấy ID: ${idValue}`);
+    }
+
+    // Update cell
+    const cellAddress = `${numberToColumnLetter(targetColIdx + 1)}${targetRow}`;
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheetName}!${cellAddress}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[value]]
+      }
+    });
+
+    // Clear cache
+    cache.clear();
+
+    const result = { success: true, cell: cellAddress, value: value };
+    const jsonString = JSON.stringify(result);
+    
+    if (callbackName) {
+      res.set('Content-Type', 'application/javascript');
+      res.send(`${callbackName}(${jsonString});`);
+    } else {
+      res.set('Content-Type', 'application/json');
+      res.send(jsonString);
+    }
+
+  } catch (error) {
+    const result = { success: false, error: error.message };
+    const jsonString = JSON.stringify(result);
+    
     res.status(400);
     if (callbackName) {
       res.set('Content-Type', 'application/javascript');
