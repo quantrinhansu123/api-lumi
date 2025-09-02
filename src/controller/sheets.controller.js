@@ -228,13 +228,14 @@ class SheetsController {
   }
 
   /**
-   * Thêm nhiều dòng dữ liệu
+   * Thêm nhiều dòng dữ liệu với kiểm tra trùng lặp
    */
   async addMultipleRows(req, res) {
     try {
       const { sheetName } = req.params;
       const { rows } = req.body;
       
+      // Validation
       if (!Array.isArray(rows)) {
         return res.status(400).json({
           success: false,
@@ -242,11 +243,52 @@ class SheetsController {
         });
       }
 
+      if (rows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Rows array cannot be empty'
+        });
+      }
+
+      // Giới hạn số lượng để tránh timeout
+      if (rows.length > 1000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Maximum 1000 rows per batch. Please split into smaller batches.'
+        });
+      }
+
+      const startTime = Date.now();
       const result = await sheetsService.addMultipleRows(sheetName, rows);
+      const processingTime = Date.now() - startTime;
       
-      res.json({
-        success: true,
-        data: result
+      // Tạo message tiếng Việt với danh sách mã trùng lặp
+      let message = '';
+      const { summary, details } = result;
+      
+      if (summary.added > 0 && summary.duplicates > 0) {
+        const duplicateList = details.duplicateKeys.join(', ');
+        message = `Đã thêm ${summary.added} dòng mới. Bỏ qua ${summary.duplicates} mã trùng lặp: ${duplicateList}`;
+      } else if (summary.added > 0 && summary.duplicates === 0) {
+        message = `Đã thêm thành công tất cả ${summary.added} dòng vào sheet ${sheetName}`;
+      } else if (summary.added === 0 && summary.duplicates > 0) {
+        const duplicateList = details.duplicateKeys.join(', ');
+        message = `Không thêm được dòng nào. Tất cả ${summary.duplicates} mã đã tồn tại: ${duplicateList}`;
+      } else {
+        message = `Không thêm được dòng nào do lỗi validation.`;
+      }
+
+      // Định HTTP status dựa trên kết quả
+      const httpStatus = summary.added > 0 ? 200 : 400;
+      
+      res.status(httpStatus).json({
+        success: summary.added > 0,
+        data: {
+          ...result,
+          processingTime: `${processingTime}ms`,
+          rowsPerSecond: summary.totalRequested > 0 ? Math.round(summary.totalRequested / (processingTime / 1000)) : 0
+        },
+        message: message
       });
     } catch (error) {
       res.status(400).json({

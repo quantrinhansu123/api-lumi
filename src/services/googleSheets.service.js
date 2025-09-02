@@ -712,6 +712,163 @@ class GoogleSheetsService {
       throw new Error(`Failed to update record: ${error.message}`);
     }
   }
+
+  /**
+   * Thêm một dòng dữ liệu mới vào sheet
+   */
+  async addRow(sheetName, rowData) {
+    try {
+      const sheets = await this.getAuthenticatedClient();
+      
+      // Lấy headers để đảm bảo thứ tự cột đúng
+      const headerResponse = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!1:1`
+      });
+
+      const headers = headerResponse.data.values ? headerResponse.data.values[0] : [];
+      
+      if (headers.length === 0) {
+        throw new Error('Sheet has no headers');
+      }
+
+      // Tạo array values theo thứ tự headers
+      const values = headers.map(header => rowData[header] || '');
+
+      // Append dòng mới vào cuối sheet
+      const response = await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!A:A`,
+        valueInputOption: 'USER_ENTERED',
+        resource: {
+          values: [values]
+        }
+      });
+
+      return {
+        success: true,
+        addedRange: response.data.updates.updatedRange,
+        addedRow: rowData
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to add row: ${error.message}`);
+    }
+  }
+
+  /**
+   * Thêm nhiều dòng dữ liệu vào sheet (batch operation) với kiểm tra trùng lặp
+   */
+  async addMultipleRows(sheetName, rows) {
+    try {
+      if (!Array.isArray(rows) || rows.length === 0) {
+        throw new Error('Rows must be a non-empty array');
+      }
+
+      const sheets = await this.getAuthenticatedClient();
+      
+      // Lấy headers để đảm bảo thứ tự cột đúng
+      const headerResponse = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!1:1`
+      });
+
+      const headers = headerResponse.data.values ? headerResponse.data.values[0] : [];
+      
+      if (headers.length === 0) {
+        throw new Error('Sheet has no headers');
+      }
+
+      const primaryKeyColumn = headers[0]; // Cột đầu tiên là primary key
+      
+      // Lấy tất cả dữ liệu hiện có để kiểm tra trùng lặp
+      const existingDataResponse = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!A:${String.fromCharCode(64 + headers.length)}`
+      });
+
+      const existingData = existingDataResponse.data.values || [];
+      const existingPrimaryKeys = new Set();
+      
+      // Tạo Set các primary key đã tồn tại (bỏ qua header row)
+      for (let i = 1; i < existingData.length; i++) {
+        if (existingData[i] && existingData[i][0]) {
+          existingPrimaryKeys.add(existingData[i][0].toString());
+        }
+      }
+
+      // Phân loại dữ liệu: mới vs trùng lặp
+      const newRows = [];
+      const duplicateKeys = [];
+      const skippedRows = [];
+
+      rows.forEach((rowData, index) => {
+        const primaryKeyValue = rowData[primaryKeyColumn];
+        
+        if (!primaryKeyValue) {
+          skippedRows.push({
+            index: index,
+            reason: `Thiếu mã khóa chính (${primaryKeyColumn})`,
+            data: rowData
+          });
+          return;
+        }
+
+        if (existingPrimaryKeys.has(primaryKeyValue.toString())) {
+          duplicateKeys.push(primaryKeyValue.toString());
+          skippedRows.push({
+            index: index,
+            reason: 'Mã khóa chính đã tồn tại',
+            primaryKey: primaryKeyValue.toString(),
+            data: rowData
+          });
+        } else {
+          newRows.push(rowData);
+        }
+      });
+
+      let addedResponse = null;
+      let addedRange = null;
+
+      // Chỉ thêm dữ liệu mới nếu có
+      if (newRows.length > 0) {
+        const values = newRows.map(rowData => 
+          headers.map(header => rowData[header] || '')
+        );
+
+        addedResponse = await sheets.spreadsheets.values.append({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `${sheetName}!A:A`,
+          valueInputOption: 'USER_ENTERED',
+          resource: {
+            values: values
+          }
+        });
+
+        addedRange = addedResponse.data.updates.updatedRange;
+      }
+
+      return {
+        success: true,
+        summary: {
+          totalRequested: rows.length,
+          added: newRows.length,
+          duplicates: duplicateKeys.length,
+          skipped: skippedRows.length
+        },
+        details: {
+          addedRows: newRows.length,
+          addedRange: addedRange,
+          updatedCells: addedResponse ? addedResponse.data.updates.updatedCells : 0,
+          duplicateKeys: duplicateKeys,
+          skippedRows: skippedRows.length > 0 ? skippedRows : undefined
+        }
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to add multiple rows: ${error.message}`);
+    }
+  }
 }
 
 export default GoogleSheetsService;

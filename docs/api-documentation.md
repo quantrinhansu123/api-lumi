@@ -422,6 +422,258 @@ Tất cả API đều trả về format lỗi chuẩn:
 4. Sử dụng `update-single` thay vì `update` cho việc cập nhật một record
 5. Sử dụng `limit` và `offset` cho phân trang
 
+---
+
+## ➕ CÁC API THÊM DỮ LIỆU
+
+### 1. Thêm một dòng dữ liệu
+
+**Endpoint:** `POST /sheet/:sheetName/rows`
+
+**Mô tả:** Thêm một dòng dữ liệu mới vào cuối sheet.
+
+**Body:** Object chứa dữ liệu cho dòng mới
+
+**Ví dụ cURL:**
+
+```bash
+# Thêm một dòng mới
+curl -X POST "http://localhost:8081/sheet/Orders/rows" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Name": "Nguyễn Văn A",
+    "Phone": "0123456789",
+    "Email": "a@gmail.com",
+    "Address": "Hà Nội"
+  }'
+
+# Thêm dòng vào sheet có tên đặc biệt
+curl -X POST "http://localhost:8081/sheet/F3%20test/rows" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Mã đơn hàng": "ABC123",
+    "Name*": "Trần Thị B", 
+    "Phone*": "0987654321"
+  }'
+```
+
+**Response mẫu:**
+```json
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "addedRange": "Orders!A5:D5",
+    "addedRow": {
+      "Name": "Nguyễn Văn A",
+      "Phone": "0123456789",
+      "Email": "a@gmail.com"
+    }
+  }
+}
+```
+
+---
+
+### 2. Thêm nhiều dòng dữ liệu (Batch) với kiểm tra trùng lặp
+
+**Endpoint:** `POST /sheet/:sheetName/rows/batch`
+
+**Mô tả:** Thêm nhiều dòng dữ liệu cùng lúc với kiểm tra trùng lặp theo primary key (cột đầu tiên). Tối ưu hơn 10-15 lần so với thêm từng dòng.
+
+**Tính năng:**
+- ✅ **Kiểm tra trùng lặp** theo primary key (cột đầu tiên)
+- ✅ **Chỉ thêm dữ liệu mới**, bỏ qua dữ liệu trùng
+- ✅ **Báo cáo chi tiết** về các key bị trùng
+- ✅ **Batch processing** cho hiệu suất cao
+
+**Body:**
+- `rows` (array): Mảng các object dữ liệu cần thêm
+
+**Giới hạn:** Tối đa 1000 dòng mỗi lần gọi
+
+**Ví dụ cURL:**
+
+```bash
+# Thêm nhiều dòng với kiểm tra trùng lặp
+curl -X POST "http://localhost:8081/sheet/Orders/rows/batch" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rows": [
+      {
+        "Mã đơn hàng": "ORD001",
+        "Name": "Khách hàng 1",
+        "Phone": "0111111111",
+        "Email": "kh1@gmail.com"
+      },
+      {
+        "Mã đơn hàng": "ORD002", 
+        "Name": "Khách hàng 2",
+        "Phone": "0222222222",
+        "Email": "kh2@gmail.com"
+      },
+      {
+        "Mã đơn hàng": "ORD001",
+        "Name": "Khách hàng 1 Duplicate",
+        "Phone": "0333333333"
+      }
+    ]
+  }'
+
+# Batch từ file JSON lớn
+curl -X POST "http://localhost:8081/sheet/Orders/rows/batch" \
+  -H "Content-Type: application/json" \
+  -d @batch_data.json
+```
+
+**Response mẫu - Có dữ liệu mới và trùng lặp:**
+```json
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "summary": {
+      "totalRequested": 3,
+      "added": 2,
+      "duplicates": 1,
+      "skipped": 1
+    },
+    "details": {
+      "addedRows": 2,
+      "addedRange": "Orders!A5:D6",
+      "updatedCells": 8,
+      "duplicateKeys": ["ORD001"],
+      "skippedRows": [
+        {
+          "index": 2,
+          "reason": "Mã khóa chính đã tồn tại",
+          "primaryKey": "ORD001",
+          "data": {
+            "Mã đơn hàng": "ORD001",
+            "Name": "Khách hàng 1 Duplicate"
+          }
+        }
+      ]
+    },
+    "processingTime": "1250ms",
+    "rowsPerSecond": 2
+  },
+  "message": "Đã thêm 2 dòng mới. Bỏ qua 1 mã trùng lặp: ORD001"
+}
+```
+
+**Response mẫu - Tất cả đều trùng lặp:**
+```json
+{
+  "success": false,
+  "data": {
+    "success": true,
+    "summary": {
+      "totalRequested": 2,
+      "added": 0,
+      "duplicates": 2,
+      "skipped": 2
+    },
+    "details": {
+      "addedRows": 0,
+      "addedRange": null,
+      "updatedCells": 0,
+      "duplicateKeys": ["ORD001", "ORD002"]
+    },
+    "processingTime": "800ms",
+    "rowsPerSecond": 2
+  },
+  "message": "Không thêm được dòng nào. Tất cả 2 mã đã tồn tại: ORD001, ORD002"
+}
+```
+
+**Response mẫu - Tất cả đều mới:**
+```json
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "summary": {
+      "totalRequested": 3,
+      "added": 3,
+      "duplicates": 0,
+      "skipped": 0
+    },
+    "details": {
+      "addedRows": 3,
+      "addedRange": "Orders!A5:D7",
+      "updatedCells": 12,
+      "duplicateKeys": []
+    },
+    "processingTime": "1250ms",
+    "rowsPerSecond": 2
+  },
+  "message": "Đã thêm thành công tất cả 3 dòng vào sheet Orders"
+}
+```
+
+---
+
+## 📝 LƯU Ý QUAN TRỌNG
+
+### Headers yêu cầu:
+```bash
+Content-Type: application/json
+```
+
+### Xử lý lỗi:
+Tất cả API đều trả về format lỗi chuẩn:
+```json
+{
+  "success": false,
+  "message": "Error description"
+}
+```
+
+### Mã lỗi HTTP phổ biến:
+- `400`: Bad Request - Thiếu tham số hoặc dữ liệu không hợp lệ
+- `404`: Not Found - Sheet không tồn tại
+- `500`: Internal Server Error - Lỗi server
+
+### Performance Tips:
+1. Sử dụng `fields` parameter để chỉ lấy những cột cần thiết
+2. ⚠️ `compress=true` chưa hoạt động đầy đủ (chỉ set header)
+3. Sử dụng `/stream` endpoint cho dữ liệu rất lớn
+4. Sử dụng `update-single` thay vì `update` cho việc cập nhật một record
+5. Sử dụng `limit` và `offset` cho phân trang
+6. **Sử dụng `/rows/batch` thay vì `/rows` cho việc thêm nhiều dòng** (nhanh hơn 10-15 lần)
+
 ### Encoding:
 - URL encode các tham số query có ký tự đặc biệt
 - Sử dụng UTF-8 encoding cho dữ liệu tiếng Việt
+
+### Lưu ý về thêm dữ liệu:
+- **Tên cột phải khớp chính xác** với headers trong sheet
+- Dữ liệu sẽ được thêm vào **cuối sheet**
+- Các cột không có dữ liệu sẽ để trống
+- Batch API có giới hạn **1000 dòng** mỗi lần gọi
+
+### Kiểm tra trùng lặp (Batch API):
+- **Primary Key:** Cột đầu tiên được dùng làm khóa chính
+- **Kiểm tra tự động:** API sẽ kiểm tra trùng lặp trước khi thêm
+- **Chỉ thêm mới:** Chỉ thêm những dòng có primary key chưa tồn tại
+- **Báo cáo chi tiết:** Response sẽ liệt kê các key bị trùng
+- **HTTP Status:** 
+  - `200` nếu có ít nhất 1 dòng được thêm thành công
+  - `400` nếu không có dòng nào được thêm (tất cả trùng lặp)
+
+### Ví dụ xử lý trùng lặp:
+```bash
+# Request với dữ liệu trùng lặp
+curl -X POST "http://localhost:8081/sheet/Orders/rows/batch" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rows": [
+      {"Mã đơn hàng": "ORD001", "Name": "Mới"},     # Sẽ thêm
+      {"Mã đơn hàng": "ORD002", "Name": "Trùng"},   # Bỏ qua (đã tồn tại)
+      {"Mã đơn hàng": "ORD003", "Name": "Mới"}      # Sẽ thêm
+    ]
+  }'
+
+# Kết quả: Thêm 2 dòng, bỏ qua 1 dòng trùng
+```
