@@ -329,6 +329,7 @@ class SheetsController {
     try {
       const { sheetName } = req.params;
       const updates = req.body;
+      const { verbose } = req.query; // ?verbose=true
       
       // Validate input
       if (!Array.isArray(updates)) {
@@ -345,11 +346,14 @@ class SheetsController {
         });
       }
 
-      const result = await sheetsService.updateByPrimaryKey(sheetName, updates);
+      const options = {
+        verbose: verbose === 'true'
+      };
+
+      const result = await sheetsService.updateByPrimaryKey(sheetName, updates, options);
       
       res.json(result);
     } catch (error) {
-      console.error('Error in updateByPrimaryKey:', error);
       res.status(500).json({
         success: false,
         message: error.message

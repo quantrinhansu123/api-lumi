@@ -451,8 +451,9 @@ class GoogleSheetsService {
    * UPDATE API - Database-like update by primary key (first column)
    * Updates only the fields provided, keeping others unchanged
    */
-  async updateByPrimaryKey(sheetName, updates) {
+  async updateByPrimaryKey(sheetName, updates, options = {}) {
     try {
+      const { verbose = false } = options;
       const startTime = Date.now();
       
       const sheets = await this.getAuthenticatedClient();
@@ -465,7 +466,7 @@ class GoogleSheetsService {
       // OPTIMIZED: Only fetch primary key column (first column)
       const primaryKeyResponse = await sheets.spreadsheets.values.get({
         spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!A:A`, // Only first column
+        range: `${sheetName}!A:A`,
         valueRenderOption: 'UNFORMATTED_VALUE',
         majorDimension: 'ROWS'
       });
@@ -475,22 +476,31 @@ class GoogleSheetsService {
         throw new Error('No data found in sheet');
       }
 
-      const primaryKeyColumn = schema.columns[0].key; // First column as primary key
-      const primaryKeyValues = primaryKeyRows.slice(1).map(row => row[0]); // Skip header, get values
-      
+      const primaryKeyColumn = schema.columns[0].key;
+      const primaryKeyValues = primaryKeyRows.slice(1).map(row => row[0]);
+
       const updateRequests = [];
-      const results = [];
+      let updatedCount = 0;
+      let notFoundCount = 0;
+      let skippedCount = 0;
+      let unchangedCount = 0;
+      
+      // Minimal results for non-verbose mode
+      const results = verbose ? [] : null;
 
       // Process each update request
       for (const updateData of updates) {
         const primaryKeyValue = updateData[primaryKeyColumn];
         
         if (!primaryKeyValue) {
-          results.push({
-            primaryKey: primaryKeyValue,
-            status: 'skipped',
-            reason: `Primary key '${primaryKeyColumn}' is required`
-          });
+          skippedCount++;
+          if (verbose) {
+            results.push({
+              primaryKey: primaryKeyValue,
+              status: 'skipped',
+              reason: `Primary key '${primaryKeyColumn}' is required`
+            });
+          }
           continue;
         }
 
@@ -500,15 +510,17 @@ class GoogleSheetsService {
         });
 
         if (targetRowIndex === -1) {
-          results.push({
-            primaryKey: primaryKeyValue,
-            status: 'not_found',
-            reason: `No row found with ${primaryKeyColumn} = '${primaryKeyValue}'`
-          });
+          notFoundCount++;
+          if (verbose) {
+            results.push({
+              primaryKey: primaryKeyValue,
+              status: 'not_found'
+            });
+          }
           continue;
         }
 
-        const actualRowIndex = targetRowIndex + 2; // +2 for 1-based index and header
+        const actualRowIndex = targetRowIndex + 2;
 
         // Create cell updates for only the fields provided in updateData
         const cellUpdates = [];
@@ -520,34 +532,36 @@ class GoogleSheetsService {
             const newValue = updateData[col.key];
             const columnLetter = this.getColumnLetter(colIndex + 1);
             
-            // Create individual cell update (we don't check current value for optimization)
             cellUpdates.push({
               range: `${sheetName}!${columnLetter}${actualRowIndex}`,
               values: [[newValue]]
             });
             hasChanges = true;
             changedFields.push(col.key);
-            
           }
         });
 
         if (hasChanges) {
-          // Add all cell updates for this row
           updateRequests.push(...cellUpdates);
-
-          results.push({
-            primaryKey: primaryKeyValue,
-            status: 'updated',
-            rowIndex: actualRowIndex,
-            changedFields: changedFields,
-            cellsUpdated: cellUpdates.length
-          });
+          updatedCount++;
+          
+          if (verbose) {
+            results.push({
+              primaryKey: primaryKeyValue,
+              status: 'updated',
+              rowIndex: actualRowIndex,
+              changedFields: changedFields,
+              cellsUpdated: cellUpdates.length
+            });
+          }
         } else {
-          results.push({
-            primaryKey: primaryKeyValue,
-            status: 'unchanged',
-            reason: 'No fields to update'
-          });
+          unchangedCount++;
+          if (verbose) {
+            results.push({
+              primaryKey: primaryKeyValue,
+              status: 'unchanged'
+            });
+          }
         }
       }
 
@@ -565,21 +579,28 @@ class GoogleSheetsService {
       const endTime = Date.now();
       const queryTime = endTime - startTime;
       
-      return {
+      // Minimal response for production, detailed for verbose
+      const response = {
         success: true,
-        summary: {
-          total: updates.length,
-          updated: updateRequests.length,
-          unchanged: results.filter(r => r.status === 'unchanged').length,
-          notFound: results.filter(r => r.status === 'not_found').length,
-          skipped: results.filter(r => r.status === 'skipped').length,
-          queryTime: `${queryTime}ms`
-        },
-        details: results
+        updated: updatedCount,
+        total: updates.length
       };
 
+      if (verbose) {
+        response.summary = {
+          total: updates.length,
+          updated: updatedCount,
+          unchanged: unchangedCount,
+          notFound: notFoundCount,
+          skipped: skippedCount,
+          queryTime: `${queryTime}ms`
+        };
+        response.details = results;
+      }
+
+      return response;
+
     } catch (error) {
-      console.error(`❌ [UPDATE] Error:`, error.message);
       throw new Error(`Failed to update data: ${error.message}`);
     }
   }
