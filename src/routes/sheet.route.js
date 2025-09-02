@@ -114,6 +114,15 @@ router.put('/:sheetName/rows/:rowIndex', SheetsController.updateRowByIndex);
 router.put('/:sheetName/rows/condition', SheetsController.updateRowByCondition);
 
 /**
+ * PATCH /api/sheets/:sheetName/update
+ * Database-like batch update by primary key (first column)
+ * Only updates provided fields, keeps others unchanged
+ * Body: [{ primaryKeyField: value, field1: newValue1, field2: newValue2 }, ...]
+ * Example: [{ "Mã đơn hàng": "ABC123", "Name*": "New Name", "Phone*": "0123456789" }]
+ */
+router.patch('/:sheetName/update', SheetsController.updateByPrimaryKey);
+
+/**
  * DELETE /api/sheets/:sheetName/rows/:rowIndex
  * Xóa dòng dữ liệu theo index (0-based, không tính header)
  */

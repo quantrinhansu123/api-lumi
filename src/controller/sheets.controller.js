@@ -321,6 +321,43 @@ class SheetsController {
   }
 
   /**
+   * Database-like batch update by primary key (first column)
+   * Updates only provided fields, keeps others unchanged
+   * Body: [{ primaryKey: value, field1: newValue1, field2: newValue2 }, ...]
+   */
+  async updateByPrimaryKey(req, res) {
+    try {
+      const { sheetName } = req.params;
+      const updates = req.body;
+      
+      // Validate input
+      if (!Array.isArray(updates)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Request body must be an array of update objects'
+        });
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No updates provided'
+        });
+      }
+
+      const result = await sheetsService.updateByPrimaryKey(sheetName, updates);
+      
+      res.json(result);
+    } catch (error) {
+      console.error('Error in updateByPrimaryKey:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  /**
    * Xóa dòng dữ liệu theo index
    */
   async deleteRowByIndex(req, res) {

@@ -446,6 +446,143 @@ class GoogleSheetsService {
       throw new Error(`Failed to get row count: ${error.message}`);
     }
   }
+
+  /**
+   * UPDATE API - Database-like update by primary key (first column)
+   * Updates only the fields provided, keeping others unchanged
+   */
+  async updateByPrimaryKey(sheetName, updates) {
+    try {
+      const startTime = Date.now();
+      
+      const sheets = await this.getAuthenticatedClient();
+      const schema = SHEET_SCHEMAS[sheetName];
+      
+      if (!schema) {
+        throw new Error(`Schema not found for sheet: ${sheetName}`);
+      }
+
+      // OPTIMIZED: Only fetch primary key column (first column)
+      const primaryKeyResponse = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!A:A`, // Only first column
+        valueRenderOption: 'UNFORMATTED_VALUE',
+        majorDimension: 'ROWS'
+      });
+
+      const primaryKeyRows = primaryKeyResponse.data.values || [];
+      if (primaryKeyRows.length <= 1) {
+        throw new Error('No data found in sheet');
+      }
+
+      const primaryKeyColumn = schema.columns[0].key; // First column as primary key
+      const primaryKeyValues = primaryKeyRows.slice(1).map(row => row[0]); // Skip header, get values
+      
+      const updateRequests = [];
+      const results = [];
+
+      // Process each update request
+      for (const updateData of updates) {
+        const primaryKeyValue = updateData[primaryKeyColumn];
+        
+        if (!primaryKeyValue) {
+          results.push({
+            primaryKey: primaryKeyValue,
+            status: 'skipped',
+            reason: `Primary key '${primaryKeyColumn}' is required`
+          });
+          continue;
+        }
+
+        // Find the row index with matching primary key
+        const targetRowIndex = primaryKeyValues.findIndex(value => {
+          return String(value).trim() === String(primaryKeyValue).trim();
+        });
+
+        if (targetRowIndex === -1) {
+          results.push({
+            primaryKey: primaryKeyValue,
+            status: 'not_found',
+            reason: `No row found with ${primaryKeyColumn} = '${primaryKeyValue}'`
+          });
+          continue;
+        }
+
+        const actualRowIndex = targetRowIndex + 2; // +2 for 1-based index and header
+
+        // Create cell updates for only the fields provided in updateData
+        const cellUpdates = [];
+        const changedFields = [];
+        let hasChanges = false;
+        
+        schema.columns.forEach((col, colIndex) => {
+          if (updateData.hasOwnProperty(col.key) && col.key !== primaryKeyColumn) {
+            const newValue = updateData[col.key];
+            const columnLetter = this.getColumnLetter(colIndex + 1);
+            
+            // Create individual cell update (we don't check current value for optimization)
+            cellUpdates.push({
+              range: `${sheetName}!${columnLetter}${actualRowIndex}`,
+              values: [[newValue]]
+            });
+            hasChanges = true;
+            changedFields.push(col.key);
+            
+          }
+        });
+
+        if (hasChanges) {
+          // Add all cell updates for this row
+          updateRequests.push(...cellUpdates);
+
+          results.push({
+            primaryKey: primaryKeyValue,
+            status: 'updated',
+            rowIndex: actualRowIndex,
+            changedFields: changedFields,
+            cellsUpdated: cellUpdates.length
+          });
+        } else {
+          results.push({
+            primaryKey: primaryKeyValue,
+            status: 'unchanged',
+            reason: 'No fields to update'
+          });
+        }
+      }
+
+      // Execute batch update if there are changes
+      if (updateRequests.length > 0) {
+        await sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          resource: {
+            valueInputOption: 'RAW',
+            data: updateRequests
+          }
+        });
+      }
+
+      const endTime = Date.now();
+      const queryTime = endTime - startTime;
+      
+      return {
+        success: true,
+        summary: {
+          total: updates.length,
+          updated: updateRequests.length,
+          unchanged: results.filter(r => r.status === 'unchanged').length,
+          notFound: results.filter(r => r.status === 'not_found').length,
+          skipped: results.filter(r => r.status === 'skipped').length,
+          queryTime: `${queryTime}ms`
+        },
+        details: results
+      };
+
+    } catch (error) {
+      console.error(`❌ [UPDATE] Error:`, error.message);
+      throw new Error(`Failed to update data: ${error.message}`);
+    }
+  }
 }
 
 export default GoogleSheetsService;
