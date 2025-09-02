@@ -52,9 +52,17 @@ router.delete('/:sheetName/data', SheetsController.clearAllData);
 // ===== DATA RETRIEVAL ROUTES =====
 /**
  * GET /api/sheets/:sheetName/data
- * Lấy tất cả dữ liệu từ một sheet
+ * Lấy tất cả dữ liệu từ một sheet với pagination & field selection
+ * Query: limit, offset, fields, compress
  */
 router.get('/:sheetName/data', SheetsController.getAllData);
+
+/**
+ * GET /api/sheets/:sheetName/stream
+ * Streaming data cho datasets lớn
+ * Query: batchSize
+ */
+router.get('/:sheetName/stream', SheetsController.streamData);
 
 /**
  * GET /api/sheets/:sheetName/data/range

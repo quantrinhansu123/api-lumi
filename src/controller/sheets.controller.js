@@ -70,18 +70,103 @@ class SheetsController {
   }
 
   /**
-   * Lấy tất cả dữ liệu từ một sheet
+   * Lấy tất cả dữ liệu từ một sheet với Smart Range optimizations
    */
   async getAllData(req, res) {
     try {
       const { sheetName } = req.params;
-      const data = await sheetsService.getAllData(sheetName);
+      const { 
+        limit, 
+        offset = 0, 
+        fields,
+        compress = false 
+      } = req.query;
+
+      // Optimization 1: Streaming response cho data lớn
+      if (compress === 'true') {
+        res.set({
+          'Content-Type': 'application/json',
+          'Content-Encoding': 'gzip'
+        });
+      }
+
+      const startTime = Date.now();
       
-      res.json({
+      // Smart Range with field selection options - với URL decoding
+      const options = {
+        limit: limit ? parseInt(limit) : undefined,
+        offset: parseInt(offset),
+        fields: fields ? decodeURIComponent(fields).split(',').map(f => f.trim()) : undefined
+      };
+
+      console.log(`📊 Smart Range Request: ${sheetName}`, options);
+      
+      const result = await sheetsService.getAllData(sheetName, options);
+      const queryTime = Date.now() - startTime;
+
+      // Service returns { data: [...], meta: {...} }
+      // Don't double-wrap it
+      const response = {
         success: true,
-        data: data,
-        count: data.length
+        data: result.data,  // Extract data array
+        meta: {
+          total: result.data.length,
+          returned: result.data.length,
+          queryTime: `${queryTime}ms`,
+          offset: parseInt(offset) || 0,
+          optimization: result.meta.optimization,
+          requestedFields: options.fields
+        }
+      };
+
+      if (limit) {
+        response.meta.limit = parseInt(limit);
+        response.meta.hasMore = false; // Smart range handles pagination internally
+      }
+
+      res.json(response);
+    } catch (error) {
+      console.error('Error in smart getAllData:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message
       });
+    }
+  }
+
+  /**
+   * Streaming data cho datasets lớn
+   */
+  async streamData(req, res) {
+    try {
+      const { sheetName } = req.params;
+      const { batchSize = 100 } = req.query;
+
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Transfer-Encoding', 'chunked');
+      
+      // Start JSON response
+      res.write('{"success":true,"data":[');
+
+      const data = await sheetsService.getAllData(sheetName);
+      const batch = parseInt(batchSize);
+      
+      for (let i = 0; i < data.length; i += batch) {
+        const chunk = data.slice(i, i + batch);
+        
+        for (let j = 0; j < chunk.length; j++) {
+          if (i > 0 || j > 0) res.write(',');
+          res.write(JSON.stringify(chunk[j]));
+        }
+        
+        // Flush buffer every batch
+        if (i + batch < data.length) {
+          await new Promise(resolve => setTimeout(resolve, 1));
+        }
+      }
+
+      res.write(`],"meta":{"total":${data.length},"streamed":true}}`);
+      res.end();
     } catch (error) {
       res.status(500).json({
         success: false,

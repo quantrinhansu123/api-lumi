@@ -14,37 +14,76 @@ class GoogleSheetsService {
   constructor() {
     this.authClient = null;
     this.sheetsAPI = null;
+    this.isAuthenticated = false;
+    this.authPromise = null; // Để tránh multiple authentication calls
   }
 
   /**
-   * Tạo authenticated client để kết nối Google Sheets API
+   * Tạo authenticated client để kết nối Google Sheets API - OPTIMIZED
    */
   async getAuthenticatedClient() {
-    if (!this.authClient) {
-      const auth = new google.auth.GoogleAuth({
-        keyFile: KEYFILEPATH,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-      });
-      this.authClient = await auth.getClient();
-      this.sheetsAPI = google.sheets({ version: 'v4', auth: this.authClient });
+    // Nếu đã có client và đã authenticated, return ngay
+    if (this.authClient && this.sheetsAPI && this.isAuthenticated) {
+      return this.sheetsAPI;
     }
+
+    // Nếu đang trong quá trình authenticate, chờ
+    if (this.authPromise) {
+      await this.authPromise;
+      return this.sheetsAPI;
+    }
+
+    // Tạo promise để authenticate
+    this.authPromise = this.performAuthentication();
+    await this.authPromise;
+    this.authPromise = null;
+
     return this.sheetsAPI;
   }
 
   /**
-   * Lấy thông tin về spreadsheet
+   * Thực hiện authentication một lần
+   */
+  async performAuthentication() {
+    try {
+      console.log('🔑 Authenticating with Google Sheets API...');
+      const startTime = Date.now();
+      
+      const auth = new google.auth.GoogleAuth({
+        keyFile: KEYFILEPATH,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+      });
+
+      this.authClient = await auth.getClient();
+      this.sheetsAPI = google.sheets({ version: 'v4', auth: this.authClient });
+      this.isAuthenticated = true;
+      
+      const endTime = Date.now();
+      console.log(`✅ Authentication completed in ${endTime - startTime}ms`);
+      
+    } catch (error) {
+      this.isAuthenticated = false;
+      this.authClient = null;
+      this.sheetsAPI = null;
+      throw new Error(`Authentication failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Lấy thông tin spreadsheet
    */
   async getSpreadsheetInfo() {
     try {
       const sheets = await this.getAuthenticatedClient();
-      const response = await sheets.spreadsheets.get({
-        spreadsheetId: SPREADSHEET_ID,
-      });
       
+      const response = await sheets.spreadsheets.get({
+        spreadsheetId: SPREADSHEET_ID
+      });
+
       return {
         title: response.data.properties.title,
         sheets: response.data.sheets.map(sheet => ({
-          sheetId: sheet.properties.sheetId,
+          id: sheet.properties.sheetId,
           title: sheet.properties.title,
           gridProperties: sheet.properties.gridProperties
         }))
@@ -55,412 +94,357 @@ class GoogleSheetsService {
   }
 
   /**
-   * Tạo sheet mới
+   * Calculate Smart Range based on requested fields
    */
-  async createSheet(sheetName) {
+  calculateSmartRange(sheetName, requestedFields = null) {
+    const schema = SHEET_SCHEMAS[sheetName];
+    if (!schema) {
+      return { fullRange: `${sheetName}!A:Z`, batchRanges: null };
+    }
+
+    // Nếu không có fields cụ thể, lấy tất cả
+    if (!requestedFields) {
+      const lastColumn = this.getColumnLetter(schema.columns.length);
+      return { 
+        fullRange: `${sheetName}!A1:${lastColumn}`, // Lấy toàn bộ data
+        batchRanges: null,
+        columns: schema.columns.map((col, index) => ({
+          key: col.key,
+          index: index,
+          letter: this.getColumnLetter(index + 1),
+          type: col.type
+        }))
+      };
+    }
+
+    // Tìm các cột được yêu cầu trong schema
+    const requestedColumns = [];
+    requestedFields.forEach(field => {
+      const colIndex = schema.columns.findIndex(col => col.key === field);
+      if (colIndex !== -1) {
+        requestedColumns.push({
+          key: field,
+          index: colIndex,
+          letter: this.getColumnLetter(colIndex + 1),
+          type: schema.columns[colIndex].type
+        });
+      } else {
+        console.log(`⚠️ Field "${field}" not found in schema`);
+      }
+    });
+
+    console.log(`🔍 Requested columns:`, requestedColumns.map(c => `${c.key} -> ${c.letter} (index: ${c.index})`));
+
+    if (requestedColumns.length === 0) {
+      return { fullRange: `${sheetName}!A1:A`, batchRanges: null }; // Lấy toàn bộ cột A
+    }
+
+    // Kiểm tra xem các cột có liền kề không
+    const sortedColumns = requestedColumns.sort((a, b) => a.index - b.index);
+    const isContiguous = this.areColumnsContiguous(sortedColumns);
+
+    console.log(`🔍 Column analysis:`, {
+      columns: sortedColumns.map(c => `${c.key}:${c.index}`),
+      isContiguous: isContiguous
+    });
+
+    if (isContiguous) {
+      // Các cột liền kề -> sử dụng single range
+      const firstCol = sortedColumns[0].letter;
+      const lastCol = sortedColumns[sortedColumns.length - 1].letter;
+      return {
+        fullRange: `${sheetName}!${firstCol}1:${lastCol}`, // Lấy toàn bộ data
+        batchRanges: null,
+        columns: requestedColumns
+      };
+    } else {
+      // Các cột không liền kề -> sử dụng batchGet
+      const batchRanges = sortedColumns.map(col => ({
+        range: `${sheetName}!${col.letter}:${col.letter}`, // Format: Sheet!A:A, Sheet!E:E
+        key: col.key,
+        type: col.type
+      }));
+
+      console.log(`🔄 Using BatchGet with ranges:`, batchRanges.map(b => b.range));
+
+      return {
+        fullRange: null,
+        batchRanges: batchRanges,
+        columns: requestedColumns
+      };
+    }
+  }
+
+  /**
+   * Kiểm tra các cột có liền kề không
+   */
+  areColumnsContiguous(sortedColumns) {
+    for (let i = 1; i < sortedColumns.length; i++) {
+      if (sortedColumns[i].index - sortedColumns[i-1].index !== 1) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Lấy tất cả dữ liệu từ một sheet - SMART RANGE VERSION
+   */
+  async getAllData(sheetName, options = {}) {
     try {
-      const sheets = await this.getAuthenticatedClient();
+      console.log(`📊 Getting data from ${sheetName} with smart range...`);
+      const startTime = Date.now();
       
-      // Kiểm tra schema có tồn tại không
-      if (!SHEET_SCHEMAS[sheetName]) {
+      const { limit, offset = 0, fields } = options;
+      const sheets = await this.getAuthenticatedClient();
+      const schema = SHEET_SCHEMAS[sheetName];
+      
+      if (!schema) {
         throw new Error(`Schema not found for sheet: ${sheetName}`);
       }
 
-      const request = {
-        spreadsheetId: SPREADSHEET_ID,
-        resource: {
-          requests: [{
-            addSheet: {
-              properties: {
-                title: sheetName
-              }
-            }
-          }]
-        }
-      };
+      // Calculate smart range
+      const rangeInfo = this.calculateSmartRange(sheetName, fields);
+      
+      let processedData;
+      
+      if (rangeInfo.batchRanges) {
+        // Non-contiguous columns - use batchGet
+        console.log(`🔄 Using BatchGet for non-contiguous columns`);
+        processedData = await this.getAllDataWithBatch(sheets, rangeInfo, { limit, offset });
+      } else {
+        // Contiguous columns or full data - use single range
+        console.log(`🔄 Using Single Range: ${rangeInfo.fullRange}`);
+        processedData = await this.getAllDataWithSingleRange(sheets, rangeInfo, { limit, offset });
+      }
 
-      const response = await sheets.spreadsheets.batchUpdate(request);
-      const newSheetId = response.data.replies[0].addSheet.properties.sheetId;
-
-      // Thêm headers vào sheet mới
-      await this.setHeaders(sheetName);
-
+      const endTime = Date.now();
+      const queryTime = endTime - startTime;
+      
+      console.log(`✅ Smart Range completed in ${queryTime}ms`);
+      console.log(`📊 Data size: ${processedData.length} records`);
+      
       return {
-        sheetId: newSheetId,
-        title: sheetName,
-        message: 'Sheet created successfully with headers'
-      };
-    } catch (error) {
-      if (error.message.includes('already exists')) {
-        throw new Error(`Sheet "${sheetName}" already exists`);
-      }
-      throw new Error(`Failed to create sheet: ${error.message}`);
-    }
-  }
-
-  /**
-   * Xóa sheet
-   */
-  async deleteSheet(sheetName) {
-    try {
-      const sheets = await this.getAuthenticatedClient();
-      
-      // Lấy thông tin về spreadsheet để tìm sheetId
-      const spreadsheetInfo = await this.getSpreadsheetInfo();
-      const sheet = spreadsheetInfo.sheets.find(s => s.title === sheetName);
-      
-      if (!sheet) {
-        throw new Error(`Sheet "${sheetName}" not found`);
-      }
-
-      const request = {
-        spreadsheetId: SPREADSHEET_ID,
-        resource: {
-          requests: [{
-            deleteSheet: {
-              sheetId: sheet.sheetId
-            }
-          }]
+        data: processedData,
+        meta: {
+          total: processedData.length,
+          queryTime: `${queryTime}ms`,
+          optimization: rangeInfo.batchRanges ? 'batch-get' : 'smart-range + field-selection',
+          requestedFields: fields,
+          rangeUsed: rangeInfo.fullRange || rangeInfo.batchRanges?.map(b => b.range)
         }
       };
-
-      await sheets.spreadsheets.batchUpdate(request);
-      return { message: `Sheet "${sheetName}" deleted successfully` };
-    } catch (error) {
-      throw new Error(`Failed to delete sheet: ${error.message}`);
-    }
-  }
-
-  /**
-   * Thiết lập headers cho sheet theo schema
-   */
-  async setHeaders(sheetName) {
-    try {
-      const sheets = await this.getAuthenticatedClient();
-      const headers = DataValidator.getHeaders(sheetName);
-
-      const request = {
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!A1:${this.getColumnLetter(headers.length)}1`,
-        valueInputOption: 'RAW',
-        resource: {
-          values: [headers]
-        }
-      };
-
-      await sheets.spreadsheets.values.update(request);
-      return { message: 'Headers set successfully' };
-    } catch (error) {
-      throw new Error(`Failed to set headers: ${error.message}`);
-    }
-  }
-
-  /**
-   * Lấy tất cả dữ liệu từ một sheet
-   */
-  async getAllData(sheetName) {
-    try {
-      const sheets = await this.getAuthenticatedClient();
       
-      const response = await sheets.spreadsheets.values.get({
+    } catch (error) {
+      throw new Error(`Failed to get data: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get data with single range (contiguous columns)
+   */
+  async getAllDataWithSingleRange(sheets, rangeInfo, options = {}) {
+    const { limit, offset = 0 } = options;
+    
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: rangeInfo.fullRange,
+      valueRenderOption: 'UNFORMATTED_VALUE'
+    });
+
+    const rows = response.data.values || [];
+    if (rows.length <= 1) return [];
+
+    const headers = rows[0];
+    const dataRows = rows.slice(1);
+    
+    // Apply pagination at data level
+    const paginatedRows = limit ? dataRows.slice(offset, offset + limit) : dataRows.slice(offset);
+    
+    // Process with column mapping
+    return this.processRowsWithColumnMapping(paginatedRows, headers, rangeInfo.columns);
+  }
+
+  /**
+   * Get data with batchGet (non-contiguous columns) - FIXED WITH majorDimension
+   */
+  async getAllDataWithBatch(sheets, rangeInfo, options = {}) {
+    const { limit, offset = 0 } = options;
+    
+    console.log(`🔍 [BatchGet] Processing BatchGet request...`);
+    console.log(`📊 [BatchGet] Ranges:`, rangeInfo.batchRanges.map(b => `${b.key} -> ${b.range}`));
+    
+    // Prepare batch request
+    const ranges = rangeInfo.batchRanges.map(batch => batch.range);
+    
+    console.log(`📊 [BatchGet] Calling Google API with ${ranges.length} ranges`);
+    
+    try {
+      const batchRequest = {
         spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!A:ZZ`, // Lấy tất cả dữ liệu
+        ranges: ranges,
+        valueRenderOption: 'UNFORMATTED_VALUE',
+        majorDimension: 'ROWS'  // ✅ FIX: Ensure data is returned as rows, not columns
+      };
+      
+      console.log(`📊 [BatchGet] Making API call...`);
+      const apiStartTime = Date.now();
+      
+      const batchResponse = await sheets.spreadsheets.values.batchGet(batchRequest);
+      
+      const apiEndTime = Date.now();
+      console.log(`✅ [BatchGet] API call completed in ${apiEndTime - apiStartTime}ms`);
+      console.log(`✅ [BatchGet] Got ${batchResponse.data.valueRanges?.length || 0} ranges`);
+
+      const valueRanges = batchResponse.data.valueRanges || [];
+      
+      // Process data
+      const processedData = [];
+      
+      // Find the maximum number of available rows across all ranges
+      let maxAvailableRows = 0;
+      valueRanges.forEach(valueRange => {
+        const rowCount = valueRange?.values?.length || 1;
+        maxAvailableRows = Math.max(maxAvailableRows, rowCount);
       });
-
-      const rows = response.data.values || [];
-      if (rows.length === 0) {
-        return [];
-      }
-
-      // Bỏ qua header row (row đầu tiên)
-      const dataRows = rows.slice(1);
       
-      return dataRows.map(row => DataValidator.arrayToData(row, sheetName));
-    } catch (error) {
-      throw new Error(`Failed to get data from sheet "${sheetName}": ${error.message}`);
-    }
-  }
-
-  /**
-   * Lấy dữ liệu theo range cụ thể
-   */
-  async getDataByRange(sheetName, range) {
-    try {
-      const sheets = await this.getAuthenticatedClient();
+      const maxDataRows = Math.max(0, maxAvailableRows - 1); // Subtract 1 for header
       
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!${range}`,
-      });
-
-      const rows = response.data.values || [];
-      return rows.map(row => DataValidator.arrayToData(row, sheetName));
-    } catch (error) {
-      throw new Error(`Failed to get data by range: ${error.message}`);
-    }
-  }
-
-  /**
-   * Thêm một dòng dữ liệu mới
-   */
-  async addRow(sheetName, rowData) {
-    try {
-      const sheets = await this.getAuthenticatedClient();
+      // Calculate how many rows to process (consistent with SingleRange)
+      const maxRows = limit ? Math.min(limit, maxDataRows) : maxDataRows;
       
-      // Validate dữ liệu trước khi thêm
-      const validatedData = DataValidator.validateRow(rowData, sheetName);
-      const rowArray = DataValidator.dataToArray(validatedData, sheetName);
-
-      const request = {
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!A:A`, // Append to the end
-        valueInputOption: 'RAW',
-        insertDataOption: 'INSERT_ROWS',
-        resource: {
-          values: [rowArray]
-        }
-      };
-
-      const response = await sheets.spreadsheets.values.append(request);
+      console.log(`🔄 [BatchGet] Max available rows across ranges: ${maxAvailableRows}, data rows: ${maxDataRows}, processing: ${maxRows}`);
       
-      return {
-        updatedRows: response.data.updates.updatedRows,
-        updatedRange: response.data.updates.updatedRange,
-        data: validatedData,
-        message: 'Row added successfully'
-      };
-    } catch (error) {
-      throw new Error(`Failed to add row: ${error.message}`);
-    }
-  }
-
-  /**
-   * Thêm nhiều dòng dữ liệu
-   */
-  async addMultipleRows(sheetName, rowsData) {
-    try {
-      const sheets = await this.getAuthenticatedClient();
-      
-      // Validate tất cả dữ liệu trước khi thêm
-      const validatedRows = rowsData.map(rowData => {
-        const validatedData = DataValidator.validateRow(rowData, sheetName);
-        return DataValidator.dataToArray(validatedData, sheetName);
-      });
-
-      const request = {
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!A:A`,
-        valueInputOption: 'RAW',
-        insertDataOption: 'INSERT_ROWS',
-        resource: {
-          values: validatedRows
-        }
-      };
-
-      const response = await sheets.spreadsheets.values.append(request);
-      
-      return {
-        updatedRows: response.data.updates.updatedRows,
-        updatedRange: response.data.updates.updatedRange,
-        addedCount: validatedRows.length,
-        message: `${validatedRows.length} rows added successfully`
-      };
-    } catch (error) {
-      throw new Error(`Failed to add multiple rows: ${error.message}`);
-    }
-  }
-
-  /**
-   * Cập nhật một dòng dữ liệu theo row index
-   */
-  async updateRowByIndex(sheetName, rowIndex, rowData) {
-    try {
-      const sheets = await this.getAuthenticatedClient();
-      
-      // Validate dữ liệu
-      const validatedData = DataValidator.validateRow(rowData, sheetName);
-      const rowArray = DataValidator.dataToArray(validatedData, sheetName);
-
-      // rowIndex + 2 vì: +1 cho 1-based indexing, +1 để bỏ qua header
-      const actualRowNumber = rowIndex + 2;
-      const range = `${sheetName}!A${actualRowNumber}:${this.getColumnLetter(rowArray.length)}${actualRowNumber}`;
-
-      const request = {
-        spreadsheetId: SPREADSHEET_ID,
-        range: range,
-        valueInputOption: 'RAW',
-        resource: {
-          values: [rowArray]
-        }
-      };
-
-      const response = await sheets.spreadsheets.values.update(request);
-      
-      return {
-        updatedRange: response.data.updatedRange,
-        updatedRows: response.data.updatedRows,
-        data: validatedData,
-        message: 'Row updated successfully'
-      };
-    } catch (error) {
-      throw new Error(`Failed to update row: ${error.message}`);
-    }
-  }
-
-  /**
-   * Tìm và cập nhật dòng dữ liệu theo điều kiện
-   */
-  async updateRowByCondition(sheetName, searchColumn, searchValue, newRowData) {
-    try {
-      const allData = await this.getAllData(sheetName);
-      const rowIndex = allData.findIndex(row => row[searchColumn] === searchValue);
-      
-      if (rowIndex === -1) {
-        throw new Error(`Row with ${searchColumn} = "${searchValue}" not found`);
-      }
-
-      return await this.updateRowByIndex(sheetName, rowIndex, newRowData);
-    } catch (error) {
-      throw new Error(`Failed to update row by condition: ${error.message}`);
-    }
-  }
-
-  /**
-   * Xóa dòng dữ liệu theo row index
-   */
-  async deleteRowByIndex(sheetName, rowIndex) {
-    try {
-      const sheets = await this.getAuthenticatedClient();
-      
-      // Lấy sheetId
-      const spreadsheetInfo = await this.getSpreadsheetInfo();
-      const sheet = spreadsheetInfo.sheets.find(s => s.title === sheetName);
-      
-      if (!sheet) {
-        throw new Error(`Sheet "${sheetName}" not found`);
-      }
-
-      // rowIndex + 1 cho 1-based indexing, +1 để bỏ qua header
-      const actualRowNumber = rowIndex + 1;
-
-      const request = {
-        spreadsheetId: SPREADSHEET_ID,
-        resource: {
-          requests: [{
-            deleteDimension: {
-              range: {
-                sheetId: sheet.sheetId,
-                dimension: 'ROWS',
-                startIndex: actualRowNumber,
-                endIndex: actualRowNumber + 1
-              }
-            }
-          }]
-        }
-      };
-
-      await sheets.spreadsheets.batchUpdate(request);
-      
-      return { message: `Row ${rowIndex + 2} deleted successfully` };
-    } catch (error) {
-      throw new Error(`Failed to delete row: ${error.message}`);
-    }
-  }
-
-  /**
-   * Tìm và xóa dòng dữ liệu theo điều kiện
-   */
-  async deleteRowByCondition(sheetName, searchColumn, searchValue) {
-    try {
-      const allData = await this.getAllData(sheetName);
-      const rowIndex = allData.findIndex(row => row[searchColumn] === searchValue);
-      
-      if (rowIndex === -1) {
-        throw new Error(`Row with ${searchColumn} = "${searchValue}" not found`);
-      }
-
-      return await this.deleteRowByIndex(sheetName, rowIndex);
-    } catch (error) {
-      throw new Error(`Failed to delete row by condition: ${error.message}`);
-    }
-  }
-
-  /**
-   * Tìm kiếm dữ liệu theo điều kiện
-   */
-  async searchRows(sheetName, searchColumn, searchValue, exactMatch = true) {
-    try {
-      const allData = await this.getAllData(sheetName);
-      
-      return allData.filter(row => {
-        const cellValue = row[searchColumn]?.toString() || '';
-        const searchStr = searchValue.toString();
+      for (let rowIndex = 1; rowIndex <= maxRows; rowIndex++) { // Start from 1 to skip header
+        const rowObject = { rowIndex: rowIndex + 1 };
+        let hasData = false;
         
-        return exactMatch 
-          ? cellValue === searchStr
-          : cellValue.toLowerCase().includes(searchStr.toLowerCase());
-      });
-    } catch (error) {
-      throw new Error(`Failed to search rows: ${error.message}`);
-    }
-  }
+        valueRanges.forEach((valueRange, rangeIndex) => {
+          const values = valueRange.values || [];
+          const batchInfo = rangeInfo.batchRanges[rangeIndex];
+          const rawValue = values[rowIndex]?.[0]; // Single column per range
+          
+          if (rawValue !== undefined) {
+            hasData = true;
+          }
+          
+          // Transform value based on type
+          rowObject[batchInfo.key] = this.transformValueFast(rawValue, batchInfo.type);
+        });
+        
+        // Only add row if it has data
+        if (hasData) {
+          processedData.push(rowObject);
+        }
+        
+        // Break if we have enough data (only when limit is specified)
+        if (limit && processedData.length >= limit) {
+          break;
+        }
+      }
 
-  /**
-   * Lấy số dòng có dữ liệu
-   */
-  async getRowCount(sheetName) {
-    try {
-      const allData = await this.getAllData(sheetName);
-      return allData.length;
-    } catch (error) {
-      throw new Error(`Failed to get row count: ${error.message}`);
-    }
-  }
-
-  /**
-   * Clear tất cả dữ liệu (giữ lại headers)
-   */
-  async clearAllData(sheetName) {
-    try {
-      const sheets = await this.getAuthenticatedClient();
+      console.log(`✅ [BatchGet] Processed ${processedData.length} records`);
+      return processedData;
       
-      const request = {
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!A2:ZZ`, // Bắt đầu từ row 2 để giữ headers
-      };
-
-      await sheets.spreadsheets.values.clear(request);
-      return { message: 'All data cleared successfully (headers preserved)' };
     } catch (error) {
-      throw new Error(`Failed to clear data: ${error.message}`);
+      console.error(`❌ [BatchGet] Error:`, error.message);
+      console.error(`📋 [BatchGet] Failed ranges:`, ranges);
+      throw error;
     }
   }
 
   /**
-   * Utility: Convert số cột thành chữ cái (A, B, C, ..., AA, AB, ...)
+   * Fast transform value - SAFE VERSION
    */
-  getColumnLetter(columnNumber) {
+  transformValueFast(value, type) {
+    // Handle null/undefined values first
+    if (value === null || value === undefined || value === '') {
+      switch (type) {
+        case 'number':
+        case 'currency':
+          return 0;
+        default:
+          return '';
+      }
+    }
+
+    switch (type) {
+      case 'number':
+      case 'currency':
+        return typeof value === 'number' ? value : (parseFloat(value) || 0);
+      
+      case 'string':
+        return String(value);
+      
+      case 'date':
+      case 'datetime':
+        // Simplified date handling
+        if (typeof value === 'number' && value > 1) {
+          return new Date((value - 25569) * 86400 * 1000).toLocaleDateString('vi-VN');
+        }
+        return String(value);
+      
+      case 'text':
+      default:
+        return String(value);
+    }
+  }
+
+  /**
+   * Process rows với column mapping
+   */
+  processRowsWithColumnMapping(dataRows, headers, columns) {
+    const result = [];
+    console.log(`🔍 Processing ${dataRows.length} rows with ${columns.length} columns`);
+    
+    // Process each row
+    dataRows.forEach((row, rowIndex) => {
+      const rowObject = { rowIndex: rowIndex + 2 }; // +2 because of header and 0-based index
+      
+      columns.forEach(col => {
+        // Use column index to get raw value
+        const rawValue = row[col.index];
+        const transformedValue = this.transformValueFast(rawValue, col.type);
+        rowObject[col.key] = transformedValue;
+      });
+      
+      result.push(rowObject);
+    });
+
+    return result;
+  }
+
+  /**
+   * Convert column index to letter (1=A, 2=B, etc.)
+   */
+  getColumnLetter(colIndex) {
     let result = '';
-    while (columnNumber > 0) {
-      columnNumber--;
-      result = String.fromCharCode(65 + (columnNumber % 26)) + result;
-      columnNumber = Math.floor(columnNumber / 26);
+    while (colIndex > 0) {
+      colIndex--;
+      result = String.fromCharCode(65 + (colIndex % 26)) + result;
+      colIndex = Math.floor(colIndex / 26);
     }
     return result;
   }
 
   /**
-   * Lấy schema của một sheet
+   * Get row count
    */
-  getSheetSchema(sheetName) {
-    return SHEET_SCHEMAS[sheetName] || null;
-  }
+  async getRowCount(sheetName) {
+    try {
+      const sheets = await this.getAuthenticatedClient();
+      
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!A:A`,
+        valueRenderOption: 'UNFORMATTED_VALUE'
+      });
 
-  /**
-   * Lấy danh sách tất cả schemas có sẵn
-   */
-  getAvailableSchemas() {
-    return Object.keys(SHEET_SCHEMAS);
+      const values = response.data.values || [];
+      return Math.max(0, values.length - 1); // Subtract 1 for header
+    } catch (error) {
+      throw new Error(`Failed to get row count: ${error.message}`);
+    }
   }
 }
 
