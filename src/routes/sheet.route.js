@@ -1,45 +1,182 @@
 import express from "express";
-import { google } from "googleapis";
-import path from "path";
-import { fileURLToPath } from 'url';
+import SheetsController from '../controller/sheets.controller.js';
+import SheetsUtilityController from '../controller/sheetsUtility.controller.js';
 
 const router = express.Router();
 
-// Lấy __dirname trong ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ===== SPREADSHEET INFO ROUTES =====
+/**
+ * GET /api/sheets/info
+ * Lấy thông tin về spreadsheet và tất cả các sheets
+ */
+router.get('/info', SheetsController.getSpreadsheetInfo);
 
-// Đường dẫn tới file service account key của bạn
-// Đảm bảo đường dẫn này chính xác
-const KEYFILEPATH = path.join(__dirname, '../..', 'sheetCredentials.json');
+/**
+ * GET /api/sheets/schemas
+ * Lấy danh sách tất cả schemas có sẵn
+ */
+router.get('/schemas', SheetsController.getAvailableSchemas);
 
-// ID của Google Sheet bạn muốn đọc
-const SPREADSHEET_ID = '1rI9cHBNlI2Dc-d6VF6zdKiUagBh-VPFrWdddPysuSmo';
+/**
+ * GET /api/sheets/:sheetName/schema
+ * Lấy schema của một sheet cụ thể
+ */
+router.get('/:sheetName/schema', SheetsController.getSheetSchema);
 
-// Cache configuration
-const CACHE_DURATION = 5 * 60 * 1000; // 5 phút
-const cache = new Map(); // Cache riêng cho từng sheet
+// ===== SHEET MANAGEMENT ROUTES =====
+/**
+ * POST /api/sheets
+ * Tạo sheet mới với headers theo schema
+ * Body: { sheetName: string }
+ */
+router.post('/', SheetsController.createSheet);
 
-// Connection pooling - tạo auth client một lần và tái sử dụng
-let authClient = null;
-let sheetsAPI = null;
+/**
+ * DELETE /api/sheets/:sheetName
+ * Xóa một sheet
+ */
+router.delete('/:sheetName', SheetsController.deleteSheet);
 
-// Pre-compile regex cho date detection
-const DATE_REGEX = /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/;
+/**
+ * PUT /api/sheets/:sheetName/headers
+ * Thiết lập lại headers cho sheet theo schema
+ */
+router.put('/:sheetName/headers', SheetsController.setHeaders);
 
-const isDateString = (str) => {
-  return typeof str === 'string' && DATE_REGEX.test(str);
-};
+/**
+ * DELETE /api/sheets/:sheetName/data
+ * Xóa tất cả dữ liệu (giữ lại headers)
+ */
+router.delete('/:sheetName/data', SheetsController.clearAllData);
 
-const getAuthenticatedClient = async () => {
-  if (!authClient) {
-    const auth = new google.auth.GoogleAuth({
-      keyFile: KEYFILEPATH,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'], // Bỏ .readonly để có quyền write
-    });
-    authClient = await auth.getClient();
-    sheetsAPI = google.sheets({ version: 'v4', auth: authClient });
-  }
-  return sheetsAPI;
-};
+// ===== DATA RETRIEVAL ROUTES =====
+/**
+ * GET /api/sheets/:sheetName/data
+ * Lấy tất cả dữ liệu từ một sheet
+ */
+router.get('/:sheetName/data', SheetsController.getAllData);
 
+/**
+ * GET /api/sheets/:sheetName/data/range
+ * Lấy dữ liệu theo range cụ thể
+ * Query: range (e.g., A1:D10)
+ */
+router.get('/:sheetName/data/range', SheetsController.getDataByRange);
+
+/**
+ * GET /api/sheets/:sheetName/count
+ * Lấy số lượng dòng có dữ liệu
+ */
+router.get('/:sheetName/count', SheetsController.getRowCount);
+
+/**
+ * GET /api/sheets/:sheetName/search
+ * Tìm kiếm dữ liệu theo điều kiện
+ * Query: searchColumn, searchValue, exactMatch (true/false)
+ */
+router.get('/:sheetName/search', SheetsController.searchRows);
+
+// ===== DATA MODIFICATION ROUTES =====
+/**
+ * POST /api/sheets/:sheetName/rows
+ * Thêm một dòng dữ liệu mới
+ * Body: { [columnKey]: value, ... }
+ */
+router.post('/:sheetName/rows', SheetsController.addRow);
+
+/**
+ * POST /api/sheets/:sheetName/rows/batch
+ * Thêm nhiều dòng dữ liệu
+ * Body: { rows: [{ [columnKey]: value, ... }, ...] }
+ */
+router.post('/:sheetName/rows/batch', SheetsController.addMultipleRows);
+
+/**
+ * PUT /api/sheets/:sheetName/rows/:rowIndex
+ * Cập nhật dòng dữ liệu theo index (0-based, không tính header)
+ * Body: { [columnKey]: value, ... }
+ */
+router.put('/:sheetName/rows/:rowIndex', SheetsController.updateRowByIndex);
+
+/**
+ * PUT /api/sheets/:sheetName/rows/condition
+ * Cập nhật dòng dữ liệu theo điều kiện tìm kiếm
+ * Body: { searchColumn: string, searchValue: any, newRowData: { [columnKey]: value, ... } }
+ */
+router.put('/:sheetName/rows/condition', SheetsController.updateRowByCondition);
+
+/**
+ * DELETE /api/sheets/:sheetName/rows/:rowIndex
+ * Xóa dòng dữ liệu theo index (0-based, không tính header)
+ */
+router.delete('/:sheetName/rows/:rowIndex', SheetsController.deleteRowByIndex);
+
+/**
+ * DELETE /api/sheets/:sheetName/rows/condition
+ * Xóa dòng dữ liệu theo điều kiện tìm kiếm
+ * Body: { searchColumn: string, searchValue: any }
+ */
+router.delete('/:sheetName/rows/condition', SheetsController.deleteRowByCondition);
+
+// ===== UTILITY ROUTES =====
+/**
+ * POST /api/sheets/:sheetName/backup
+ * Backup toàn bộ dữ liệu của một sheet
+ */
+router.post('/:sheetName/backup', SheetsUtilityController.backupSheet);
+
+/**
+ * POST /api/sheets/:sheetName/restore
+ * Restore dữ liệu từ backup
+ * Body: { backupData: array }
+ */
+router.post('/:sheetName/restore', SheetsUtilityController.restoreSheet);
+
+/**
+ * POST /api/sheets/copy
+ * Copy dữ liệu từ sheet này sang sheet khác
+ * Body: { sourceSheetName: string, targetSheetName: string }
+ */
+router.post('/copy', SheetsUtilityController.copySheetData);
+
+/**
+ * POST /api/sheets/:sheetName/validate
+ * Validate dữ liệu hàng loạt
+ * Body: { rows: array }
+ */
+router.post('/:sheetName/validate', SheetsUtilityController.validateBatchData);
+
+/**
+ * POST /api/sheets/:sheetName/import
+ * Import dữ liệu với validation
+ * Body: { rows: array, options: { skipErrors: boolean, clearBeforeImport: boolean } }
+ */
+router.post('/:sheetName/import', SheetsUtilityController.importDataWithValidation);
+
+/**
+ * GET /api/sheets/:sheetName/statistics
+ * Lấy thống kê của sheet
+ */
+router.get('/:sheetName/statistics', SheetsUtilityController.getSheetStatistics);
+
+/**
+ * POST /api/sheets/:sheetName/find-replace
+ * Tìm và thay thế giá trị trong sheet
+ * Body: { searchValue: any, replaceValue: any, options: { searchColumns: array, exactMatch: boolean, caseSensitive: boolean } }
+ */
+router.post('/:sheetName/find-replace', SheetsUtilityController.findAndReplace);
+
+/**
+ * GET /api/sheets/:sheetName/export/csv
+ * Export sheet thành file CSV
+ */
+router.get('/:sheetName/export/csv', SheetsUtilityController.exportToCSV);
+
+/**
+ * POST /api/sheets/duplicate
+ * Duplicate một sheet với tên mới
+ * Body: { sourceSheetName: string, newSheetName: string }
+ */
+router.post('/duplicate', SheetsUtilityController.duplicateSheet);
+
+export default router;
