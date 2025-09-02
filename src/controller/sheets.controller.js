@@ -362,6 +362,39 @@ class SheetsController {
   }
 
   /**
+   * UPDATE SINGLE RECORD - Optimized for single object payload
+   * Faster than array version for single record updates
+   */
+  async updateSingleByPrimaryKey(req, res) {
+    try {
+      const { sheetName } = req.params;
+      const updateData = req.body;
+      const { verbose } = req.query;
+      
+      // Validation: Must be object, not array
+      if (Array.isArray(updateData) || typeof updateData !== 'object' || updateData === null) {
+        return res.status(400).json({
+          success: false,
+          error: 'Request body must be a single object (not array)'
+        });
+      }
+
+      const options = {
+        verbose: verbose === 'true'
+      };
+
+      const result = await sheetsService.updateSingleByPrimaryKey(sheetName, updateData, options);
+      
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  /**
    * Xóa dòng dữ liệu theo index
    */
   async deleteRowByIndex(req, res) {

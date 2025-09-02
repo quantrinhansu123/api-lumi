@@ -123,6 +123,15 @@ router.put('/:sheetName/rows/condition', SheetsController.updateRowByCondition);
 router.patch('/:sheetName/update', SheetsController.updateByPrimaryKey);
 
 /**
+ * PATCH /api/sheets/:sheetName/update-single
+ * Optimized single record update by primary key (faster than array version)
+ * Only updates provided fields, keeps others unchanged
+ * Body: { primaryKeyField: value, field1: newValue1, field2: newValue2 }
+ * Example: { "Mã đơn hàng": "ABC123", "Name*": "New Name", "Phone*": "0123456789" }
+ */
+router.patch('/:sheetName/update-single', SheetsController.updateSingleByPrimaryKey);
+
+/**
  * DELETE /api/sheets/:sheetName/rows/:rowIndex
  * Xóa dòng dữ liệu theo index (0-based, không tính header)
  */
