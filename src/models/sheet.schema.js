@@ -231,6 +231,69 @@ export const SHEET_SCHEMAS = {
     columns: [
       { key: 'Mã đơn hàng', header: 'Mã đơn hàng', type: 'string', required: true }
     ]
+  },
+  'Báo cáo sale': {
+    name: 'Báo cáo sale',
+    columns: [
+      { key: 'id', header: 'id', type: 'string', required: true },
+      { key: 'Email', header: 'Email', type: 'string', required: false },
+      { key: 'Tên', header: 'Tên', type: 'string', required: false },
+      { key: 'Ngày', header: 'Ngày', type: 'date', required: false },
+      { key: 'Ca', header: 'Ca', type: 'string', required: false },
+      { key: 'Sản phẩm', header: 'Sản phẩm', type: 'string', required: false },
+      { key: 'Thị trường', header: 'Thị trường', type: 'string', required: false },
+      { key: 'Số Mess', header: 'Số Mess', type: 'number', required: false },
+      { key: 'Phản hồi', header: 'Phản hồi', type: 'number', required: false },
+      { key: 'Đơn Mess', header: 'Đơn Mess', type: 'number', required: false },
+      { key: 'Doanh số Mess', header: 'Doanh số Mess', type: 'number', required: false },
+      { key: 'id số mess', header: 'id số mess', type: 'string', required: false },
+      { key: 'id phản hồi', header: 'id phản hồi', type: 'string', required: false },
+      { key: 'Team', header: 'Team', type: 'string', required: false },
+      { key: 'Trạng thái', header: 'Trạng thái', type: 'string', required: false },
+      { key: 'Chi nhánh', header: 'Chi nhánh', type: 'string', required: false },
+      { key: 'id_NS', header: 'id_NS', type: 'string', required: false },
+      { key: 'Doanh số đi', header: 'Doanh số đi', type: 'number', required: false },
+      { key: 'Số đơn Hoàn huỷ', header: 'Số đơn Hoàn huỷ', type: 'number', required: false },
+      { key: 'Doanh số hoàn huỷ', header: 'Doanh số hoàn huỷ', type: 'number', required: false },
+      { key: 'Số đơn thành công', header: 'Số đơn thành công', type: 'number', required: false },
+      { key: 'Doanh số thành công', header: 'Doanh số thành công', type: 'number', required: false },
+      { key: 'Khách mới', header: 'Khách mới', type: 'number', required: false },
+      { key: 'Khách cũ', header: 'Khách cũ', type: 'number', required: false },
+      { key: 'Bán chéo', header: 'Bán chéo', type: 'string', required: false }
+    ]
+  },
+  'Báo cáo MKT': {
+    name: 'Báo cáo MKT',
+    columns: [
+      { key: 'id', header: 'id', type: 'string', required: true },
+      { key: 'Tên', header: 'Tên', type: 'string', required: false },
+      { key: 'Email', header: 'Email', type: 'string', required: false },
+      { key: 'Ngày', header: 'Ngày', type: 'date', required: false },
+      { key: 'ca', header: 'ca', type: 'string', required: false },
+      { key: 'Sản_phẩm', header: 'Sản_phẩm', type: 'string', required: false },
+      { key: 'Thị_trường', header: 'Thị_trường', type: 'string', required: false },
+      { key: 'page', header: 'page', type: 'string', required: false },
+      { key: 'TKQC', header: 'TKQC', type: 'string', required: false },
+      { key: 'CPQC', header: 'CPQC', type: 'number', required: false },
+      { key: 'Via_log', header: 'Via_log', type: 'string', required: false },
+      { key: 'Số_Mess_Cmt', header: 'Số_Mess_Cmt', type: 'number', required: false },
+      { key: 'Số đơn', header: 'Số đơn', type: 'number', required: false },
+      { key: 'Doanh số', header: 'Doanh số', type: 'number', required: false },
+      { key: 'Team', header: 'Team', type: 'string', required: false },
+      { key: 'id_NS', header: 'id_NS', type: 'string', required: false },
+      { key: 'Doanh số đi', header: 'Doanh số đi', type: 'number', required: false },
+      { key: 'Số đơn hoàn hủy', header: 'Số đơn hoàn hủy', type: 'number', required: false },
+      { key: 'DS chốt', header: 'DS chốt', type: 'number', required: false },
+      { key: 'DS sau hoàn hủy', header: 'DS sau hoàn hủy', type: 'number', required: false },
+      { key: 'Số đơn hoàn hủy', header: 'Số đơn hoàn hủy', type: 'number', required: false },
+      { key: 'Doanh số sau ship', header: 'Doanh số sau ship', type: 'number', required: false },
+      { key: 'Doanh số TC', header: 'Doanh số TC', type: 'number', required: false },
+      { key: 'KPIs', header: 'KPIs', type: 'number', required: false },
+      { key: 'CPQC theo TKQC', header: 'CPQC theo TKQC', type: 'string', required: false },
+      { key: 'Báo cáo theo Page', header: 'Báo cáo theo Page', type: 'string', required: false },
+      { key: 'Trạng thái', header: 'Trạng thái', type: 'string', required: false },
+      { key: 'Cảnh báo', header: 'Cảnh báo', type: 'string', required: false }
+    ]
   }
 };
 
