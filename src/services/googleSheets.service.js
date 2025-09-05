@@ -46,9 +46,6 @@ class GoogleSheetsService {
    */
   async performAuthentication() {
     try {
-      console.log('🔑 Authenticating with Google Sheets API...');
-      const startTime = Date.now();
-
       const auth = new google.auth.GoogleAuth({
         keyFile: KEYFILEPATH,
         scopes: ['https://www.googleapis.com/auth/spreadsheets']
@@ -57,9 +54,6 @@ class GoogleSheetsService {
       this.authClient = await auth.getClient();
       this.sheetsAPI = google.sheets({ version: 'v4', auth: this.authClient });
       this.isAuthenticated = true;
-
-      const endTime = Date.now();
-      console.log(`✅ Authentication completed in ${endTime - startTime}ms`);
 
     } catch (error) {
       this.isAuthenticated = false;
@@ -133,7 +127,6 @@ class GoogleSheetsService {
       }
     });
 
-    console.log(`🔍 Requested columns:`, requestedColumns.map(c => `${c.key} -> ${c.letter} (index: ${c.index})`));
 
     if (requestedColumns.length === 0) {
       return { fullRange: `${sheetName}!A1:A`, batchRanges: null }; // Lấy toàn bộ cột A
@@ -142,11 +135,6 @@ class GoogleSheetsService {
     // Kiểm tra xem các cột có liền kề không
     const sortedColumns = requestedColumns.sort((a, b) => a.index - b.index);
     const isContiguous = this.areColumnsContiguous(sortedColumns);
-
-    console.log(`🔍 Column analysis:`, {
-      columns: sortedColumns.map(c => `${c.key}:${c.index}`),
-      isContiguous: isContiguous
-    });
 
     if (isContiguous) {
       // Các cột liền kề -> sử dụng single range
@@ -164,8 +152,6 @@ class GoogleSheetsService {
         key: col.key,
         type: col.type
       }));
-
-      console.log(`🔄 Using BatchGet with ranges:`, batchRanges.map(b => b.range));
 
       return {
         fullRange: null,
@@ -370,7 +356,6 @@ class GoogleSheetsService {
 
         return formatDate(new Date(value));
       case 'datetime':
-        // console.log(`🔄 [TransformValue] Transforming ${type} value:`, value);
 
         const formatDateTime = (date) => {
           const d = date.getDate();
@@ -415,8 +400,6 @@ class GoogleSheetsService {
    */
   processRowsWithColumnMapping(dataRows, headers, columns) {
     const result = [];
-    console.log(`🔍 Processing ${dataRows.length} rows with ${columns.length} columns`);
-
     // Process each row
     dataRows.forEach((row, rowIndex) => {
       const rowObject = { rowIndex: rowIndex + 2 }; // +2 because of header and 0-based index
