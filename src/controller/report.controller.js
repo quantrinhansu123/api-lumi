@@ -1,0 +1,89 @@
+import HandleDataReport from '../services/handleDataReport.js';
+
+class ReportController {
+  constructor() {
+    this.handleDataReport = new HandleDataReport();
+  }
+
+  /**
+   * API để tạo báo cáo theo sheetName
+   * POST /api/report/generate
+   * Body: { sheetName: string }
+   */
+  generateReport = async (req, res) => {
+    try {
+      const { sheetName } = req.body;
+
+      if (!sheetName) {
+        return res.status(400).json({
+          success: false,
+          message: 'sheetName is required'
+        });
+      }
+
+      console.log(`📊 Generating report for sheet: ${sheetName}`);
+      const startTime = Date.now();
+
+      const result = await this.handleDataReport.processReport(sheetName);
+
+      const endTime = Date.now();
+      const processingTime = endTime - startTime;
+
+      return res.status(200).json({
+        success: true,
+        message: `Report generated successfully for ${sheetName}`,
+        data: result.data,
+        meta: {
+          ...result.meta,
+          processingTime: `${processingTime}ms`,
+          requestedSheet: sheetName
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Error generating report:', error.message);
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+        error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
+  };
+
+  /**
+   * API để lấy danh sách các loại báo cáo có sẵn
+   * GET /api/report/available
+   */
+  getAvailableReports = async (req, res) => {
+    try {
+      const availableReports = [
+        {
+          sheetName: 'Báo cáo MKT',
+          description: 'Báo cáo tổng hợp Marketing - kết hợp dữ liệu từ Báo cáo MKT, F3 và Nhân sự',
+          dataSources: [
+            { spreadsheetId: '1ylYT0UAcahij5UtDikKyJFWT3gIyRZsuFsYQ5aUTi2Y', sheet: 'Báo cáo MKT' },
+            { spreadsheetId: '1rI9cHBNlI2Dc-d6VF6zdKiUagBh-VPFrWdddPysuSmo', sheet: 'F3' },
+            { spreadsheetId: '1ylYT0UAcahij5UtDikKyJFWT3gIyRZsuFsYQ5aUTi2Y', sheet: 'Nhân sự' }
+          ]
+        }
+      ];
+
+      return res.status(200).json({
+        success: true,
+        data: availableReports,
+        meta: {
+          totalAvailable: availableReports.length
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Error getting available reports:', error.message);
+      return res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  };
+}
+
+export default ReportController;

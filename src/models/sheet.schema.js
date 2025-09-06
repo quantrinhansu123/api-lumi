@@ -262,8 +262,8 @@ export const SHEET_SCHEMAS = {
       { key: 'Bán chéo', header: 'Bán chéo', type: 'string', required: false }
     ]
   },
-  'Báo cáo MKT': {
-    name: 'Báo cáo MKT',
+  'Báo cáo MKT fast': {
+    name: 'Báo cáo MKT fast',
     columns: [
       { key: 'id', header: 'id', type: 'string', required: true },
       { key: 'Tên', header: 'Tên', type: 'string', required: false },
@@ -293,6 +293,22 @@ export const SHEET_SCHEMAS = {
       { key: 'Báo cáo theo Page', header: 'Báo cáo theo Page', type: 'string', required: false },
       { key: 'Trạng thái', header: 'Trạng thái', type: 'string', required: false },
       { key: 'Cảnh báo', header: 'Cảnh báo', type: 'string', required: false }
+    ]
+  },
+  'Nhân sự': {
+    name: 'Nhân sự', //id	Họ Và Tên	Bộ phận	Vị trí	Email	SĐT	Team	chi nhánh	Ca	Vị trí vận đơn	link vận đơn
+    columns: [
+      { key: 'id', header: 'id', type: 'string', required: true },
+      { key: 'Họ Và Tên', header: 'Họ Và Tên', type: 'string', required: false },
+      { key: 'Bộ phận', header: 'Bộ phận', type: 'string', required: false },
+      { key: 'Vị trí', header: 'Vị trí', type: 'string', required: false },
+      { key: 'Email', header: 'Email', type: 'string', required: false },
+      { key: 'SĐT', header: 'SĐT', type: 'string', required: false },
+      { key: 'Team', header: 'Team', type: 'string', required: false },
+      { key: 'chi nhánh', header: 'chi nhánh', type: 'string', required: false },
+      { key: 'Ca', header: 'Ca', type: 'string', required: false },
+      { key: 'Vị trí vận đơn', header: 'Vị trí vận đơn', type: 'string', required: false },
+      { key: 'link vận đơn', header: 'link vận đơn', type: 'string', required: false }
     ]
   }
 };
