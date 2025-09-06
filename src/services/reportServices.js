@@ -1,5 +1,10 @@
-const { google } = require('googleapis');
-const { SHEET_SCHEMAS } = require('../models/sheet.schema');
+import { google } from 'googleapis';
+import { SHEET_SCHEMAS } from '../models/sheet.schema.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 class ReportServices {
   constructor() {
@@ -34,10 +39,10 @@ class ReportServices {
    */
   async performAuthentication() {
     try {
-      const credentials = require('../../sheetCredentials.json');
+      const KEYFILEPATH = path.join(__dirname, '../..', 'sheetCredentials.json');
       
       this.authClient = new google.auth.GoogleAuth({
-        credentials: credentials,
+        keyFile: KEYFILEPATH,
         scopes: ['https://www.googleapis.com/auth/spreadsheets']
       });
 
@@ -459,4 +464,4 @@ class ReportServices {
   }
 }
 
-module.exports = ReportServices;
+export default ReportServices;
