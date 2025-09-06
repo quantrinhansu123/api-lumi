@@ -52,26 +52,22 @@ curl -X GET "http://localhost:8081/report/available"
 
 ---
 
-### 2. Tạo báo cáo theo sheetName
+### 2. Tạo báo cáo theo tableName
 
-**Endpoint:** `POST /report/generate`
+**Endpoint:** `GET /report/generate?tableName=string`
 
-**Mô tả:** Tạo báo cáo tổng hợp dựa trên sheetName được cung cấp.
+**Mô tả:** Tạo báo cáo tổng hợp dựa trên tableName được cung cấp trong query parameter.
 
-**Request Body:**
-```json
-{
-  "sheetName": "Báo cáo MKT"
-}
-```
+**Query Parameters:**
+- `tableName` (string, required): Tên bảng/sheet để tạo báo cáo
 
 **Ví dụ cURL:**
 ```bash
-curl -X POST "http://localhost:8081/report/generate" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sheetName": "Báo cáo MKT"
-  }'
+# Tạo báo cáo MKT
+curl -X GET "http://localhost:8081/report/generate?tableName=Báo%20cáo%20MKT"
+
+# URL decode: tableName=Báo cáo MKT
+curl -X GET "http://localhost:8081/report/generate?tableName=Báo%20cáo%20MKT"
 ```
 
 **Response mẫu:**
@@ -124,7 +120,7 @@ curl -X POST "http://localhost:8081/report/generate" \
     "nhanSuRecords": 50,
     "processedAt": "2025-09-06T10:30:00.000Z",
     "processingTime": "2500ms",
-    "requestedSheet": "Báo cáo MKT"
+    "requestedTable": "Báo cáo MKT"
   }
 }
 ```
@@ -158,7 +154,7 @@ curl -X POST "http://localhost:8081/report/generate" \
 ```json
 {
   "success": false,
-  "message": "sheetName is required"
+  "message": "tableName query parameter is required"
 }
 ```
 

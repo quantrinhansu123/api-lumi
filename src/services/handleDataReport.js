@@ -14,7 +14,7 @@ class HandleDataReport {
             const [baoCaoMKTData, f3Data, nhanSuData] = await Promise.all([
                 this.reportServices.getAllData(
                     '1ylYT0UAcahij5UtDikKyJFWT3gIyRZsuFsYQ5aUTi2Y',
-                    'Báo cáo MKT fast',
+                    'Báo cáo MKT',
                     {
                         fields: [
                             'id', 'Tên', 'Email', 'Ngày', 'Sản_phẩm', 'Thị_trường',
@@ -24,7 +24,7 @@ class HandleDataReport {
                     }
                 ),
                 this.reportServices.getAllData(
-                    '1lAFzm6Y-qwYw6F40IC9Z_0QNkJtC4oq_2CHECBbnlhQ',
+                    '1rI9cHBNlI2Dc-d6VF6zdKiUagBh-VPFrWdddPysuSmo',
                     'F3',
                     {
                         fields: [
@@ -287,15 +287,15 @@ class HandleDataReport {
     }
 
     /**
-     * Xử lý báo cáo theo sheetName
+     * Xử lý báo cáo theo tableName
      */
-    async processReport(sheetName) {
-        switch (sheetName) {
+    async processReport(tableName) {
+        switch (tableName) {
             case 'Báo cáo MKT':
                 return await this.processMarketingReport();
 
             default:
-                throw new Error(`Unsupported sheet name for report: ${sheetName}`);
+                throw new Error(`Unsupported table name for report: ${tableName}`);
         }
     }
 }

@@ -6,37 +6,37 @@ class ReportController {
   }
 
   /**
-   * API để tạo báo cáo theo sheetName
-   * POST /api/report/generate
-   * Body: { sheetName: string }
+   * API để tạo báo cáo theo tableName
+   * GET /api/report/generate?tableName=string
+   * Query: tableName (string)
    */
   generateReport = async (req, res) => {
     try {
-      const { sheetName } = req.body;
+      const { tableName } = req.query;
 
-      if (!sheetName) {
+      if (!tableName) {
         return res.status(400).json({
           success: false,
-          message: 'sheetName is required'
+          message: 'tableName query parameter is required'
         });
       }
 
-      console.log(`📊 Generating report for sheet: ${sheetName}`);
+    //   console.log(`📊 Generating report for table: ${tableName}`);
       const startTime = Date.now();
 
-      const result = await this.handleDataReport.processReport(sheetName);
+      const result = await this.handleDataReport.processReport(tableName);
 
       const endTime = Date.now();
       const processingTime = endTime - startTime;
 
       return res.status(200).json({
         success: true,
-        message: `Report generated successfully for ${sheetName}`,
+        message: `Report generated successfully for ${tableName}`,
         data: result.data,
         meta: {
           ...result.meta,
           processingTime: `${processingTime}ms`,
-          requestedSheet: sheetName
+          requestedTable: tableName
         }
       });
 

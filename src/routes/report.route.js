@@ -12,10 +12,10 @@ const reportController = new ReportController();
 router.get('/available', reportController.getAvailableReports);
 
 /**
- * POST /api/report/generate
- * Tạo báo cáo theo sheetName
- * Body: { sheetName: string }
+ * GET /api/report/generate?tableName=string
+ * Tạo báo cáo theo tableName
+ * Query: tableName (string)
  */
-router.post('/generate', reportController.generateReport);
+router.get('/generate', reportController.generateReport);
 
 export default router;

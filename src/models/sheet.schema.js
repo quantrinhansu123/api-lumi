@@ -262,8 +262,8 @@ export const SHEET_SCHEMAS = {
       { key: 'Bán chéo', header: 'Bán chéo', type: 'string', required: false }
     ]
   },
-  'Báo cáo MKT fast': {
-    name: 'Báo cáo MKT fast',
+  'Báo cáo MKT': {
+    name: 'Báo cáo MKT',
     columns: [
       { key: 'id', header: 'id', type: 'string', required: true },
       { key: 'Tên', header: 'Tên', type: 'string', required: false },
