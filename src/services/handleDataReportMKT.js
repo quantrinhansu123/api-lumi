@@ -1,6 +1,6 @@
 import ReportServices from './reportServices.js';
 
-class HandleDataReport {
+class HandleDataReportMKT {
     constructor() {
         this.reportServices = new ReportServices();
     }
@@ -179,7 +179,7 @@ class HandleDataReport {
                 // Cập nhật doanh số đi hoặc hoàn hủy dựa trên kết quả check
                 if (ketQuaCheck === 'ok') {
                     reportArray[index]['Doanh số đi thực tế'] += tongTien;
-                } else if (ketQuaCheck === 'hủy' || ketQuaCheck === 'hoàn') {
+                } else if (ketQuaCheck === 'hủy' || ketQuaCheck === 'hoàn' || ketQuaCheck === 'huỷ') {
                     reportArray[index]['Doanh số hoàn hủy thực tế'] += tongTien;
                     reportArray[index]['Số đơn hoàn hủy thực tế'] += 1;
                 }
@@ -188,8 +188,8 @@ class HandleDataReport {
                 // Tạo record mới nếu chưa có
                 const employeeInfo = nhanSuMap.get(nhanVienMarketing) || {};
                 const dsDiThucTe = ketQuaCheck === 'ok' ? (parseFloat(f3Record['Tổng tiền VNĐ']) || 0) : 0;
-                const dsHuyThucTe = (ketQuaCheck === 'hủy' || ketQuaCheck === 'hoàn') ? (parseFloat(f3Record['Tổng tiền VNĐ']) || 0) : 0;
-                const soDonHuyThucTe = (ketQuaCheck === 'hủy' || ketQuaCheck === 'hoàn') ? 1 : 0;
+                const dsHuyThucTe = (ketQuaCheck === 'hủy' || ketQuaCheck === 'hoàn' || ketQuaCheck === 'huỷ') ? (parseFloat(f3Record['Tổng tiền VNĐ']) || 0) : 0;
+                const soDonHuyThucTe = (ketQuaCheck === 'hủy' || ketQuaCheck === 'hoàn' || ketQuaCheck === 'huỷ') ? 1 : 0;
 
                 const newRecord = {
                     id: `generated_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -300,4 +300,4 @@ class HandleDataReport {
     }
 }
 
-export default HandleDataReport;
+export default HandleDataReportMKT;

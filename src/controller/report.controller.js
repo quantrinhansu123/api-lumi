@@ -1,8 +1,10 @@
-import HandleDataReport from '../services/handleDataReport.js';
+import HandleDataReportMKT from '../services/handleDataReportMKT.js';
+import HandleDataReportSale from '../services/handleDataReportSale.js';
 
 class ReportController {
   constructor() {
-    this.handleDataReport = new HandleDataReport();
+    this.handleDataRMKT = new HandleDataReportMKT();
+    this.handleDataRSale = new HandleDataReportSale();
   }
 
   /**
@@ -24,7 +26,22 @@ class ReportController {
     //   console.log(`📊 Generating report for table: ${tableName}`);
       const startTime = Date.now();
 
-      const result = await this.handleDataReport.processReport(tableName);
+        let result;
+
+      switch (tableName) {
+        case 'Báo cáo MKT':
+          result = await this.handleDataRMKT.processReport(tableName);
+            break;
+        case 'Báo cáo sale':
+            result = await this.handleDataRSale.processReport(tableName);
+            break;
+        default:
+            return res.status(400).json({
+                success: false,
+                message: `Unsupported tableName: ${tableName}`
+            });
+      }
+
 
       const endTime = Date.now();
       const processingTime = endTime - startTime;
