@@ -33,7 +33,7 @@ class HandleDataReportMKT {
                             'Tổng tiền VNĐ', 'Nhân viên Sale', 'Nhân viên Marketing',
                             'NV Vận đơn', 'Kết quả Check', 'Trạng thái giao hàng NB',
                             'Đơn vị vận chuyển', 'Trạng thái thu tiền', 'Phân loại KH',
-                            'Khu vực', 'Team', 'Trạng thái giao hàng'
+                            'Khu vực', 'Team', 'Trạng thái giao hàng', 'Ca'
                         ]
                     }
                 ),
@@ -163,7 +163,6 @@ class HandleDataReportMKT {
             const khuVuc = f3Record['Khu vực']?.trim() || '';
             const ketQuaCheck = f3Record['Kết quả Check']?.trim().toLowerCase() || '';
             const phanLoaiKH = f3Record['Phân loại KH']?.trim() || '';
-            const ca = f3Record['Ca']?.trim() || 'Hết ca';
 
             const matchingKey = this.createMatchingKey(ngayLenDon, nhanVienMarketing, matHang, khuVuc);
 
@@ -176,7 +175,6 @@ class HandleDataReportMKT {
                 const tongTien = parseFloat(f3Record['Tổng tiền VNĐ']) || 0;
                 reportArray[index]['Doanh thu chốt thực tế'] += tongTien;
                 reportArray[index]['Phân loại KH'] = phanLoaiKH;
-                reportArray[index]['ca'] = ca
 
                 // Cập nhật doanh số đi hoặc hoàn hủy dựa trên kết quả check
                 if (ketQuaCheck === 'ok') {
@@ -199,7 +197,7 @@ class HandleDataReportMKT {
                     Email: employeeInfo.email || '',
                     'Chức vụ': employeeInfo.chucVu || 'NV',
                     'Ngày': ngayLenDon,
-                    ca: ca,
+                    ca: 'Hết Ca',
                     'Sản_phẩm': matHang,
                     'Thị_trường': khuVuc,
                     page: '',
