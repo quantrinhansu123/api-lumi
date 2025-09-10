@@ -203,7 +203,7 @@ class HandleDataReportSale {
                     'id phản hồi': '',
                     Team: employeeInfo.team || '',
                     'Trạng thái': 'Đã gửi',
-                    'Chi nhánh': '',
+                    'Chi nhánh': String(f3Record['Team'] || ''),
                     id_NS: employeeInfo.id || '',
                     'Doanh số đi': 0,
                     'Số đơn Hoàn huỷ': 0,
