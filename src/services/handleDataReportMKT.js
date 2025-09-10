@@ -291,6 +291,7 @@ class HandleDataReportMKT {
     }
 
     processF3DataGiuaCa(reportArray, f3Data, nhanSuMap) {
+        const filterGiuaCa = f3Data.filter(record =>  String(record['Ca']).includes('Giữa ca'));
         // Tạo map để tra cứu nhanh các record trong reportArray
         const reportMap = new Map();
         reportArray.forEach((record, index) => {
@@ -302,7 +303,7 @@ class HandleDataReportMKT {
             );
             reportMap.set(key, index);
         });
-        const filterGiuaCa = f3Data.filter(record =>  String(record['Ca']).includes('Giữa ca'));
+        
 
         // Lặp qua dữ liệu F3
         filterGiuaCa.forEach(f3Record => {
