@@ -190,9 +190,6 @@ class HandleDataReportMKT {
             };
         });
     }
-    /**
-     * Xử lý dữ liệu F3 và cập nhật báo cáo
-     */
     processF3Data(reportArray, f3Data, nhanSuMap) {
         // Tạo map để tra cứu nhanh các record trong reportArray
         const reportMap = new Map();
